@@ -1,5 +1,8 @@
 """
 LiteLLM integration client for multi-provider AI access
+
+This module provides dynamic provider detection - providers are only shown as
+available when their API keys are present in the environment.
 """
 
 import math
@@ -12,8 +15,9 @@ from litellm import completion
 # Track connectivity status per provider
 _provider_online: Dict[str, bool] = {}
 
-# Supported providers and their model prefixes for LiteLLM
-SUPPORTED_PROVIDERS = {
+# Provider registry - defines known providers and their configurations
+# Providers are dynamically filtered at runtime based on API key availability
+PROVIDER_REGISTRY = {
     "openai": {
         "name": "OpenAI",
         "envVar": "OPENAI_API_KEY",
@@ -119,6 +123,59 @@ SUPPORTED_PROVIDERS = {
     },
 }
 
+# Backward compatibility alias for tests
+SUPPORTED_PROVIDERS = PROVIDER_REGISTRY
+
+
+def get_available_providers() -> List[Dict[str, Any]]:
+    """
+    Get providers that have API keys available in the environment.
+    Returns only providers we can actually use for requests.
+
+    This is the primary function for dynamic provider detection.
+    """
+    available = []
+    for provider_id, info in PROVIDER_REGISTRY.items():
+        api_key = os.environ.get(info["envVar"], "")
+        if api_key:
+            available.append({
+                "id": provider_id,
+                "name": info["name"],
+                "envVar": info["envVar"],
+                "connected": True,
+                "hasApiKey": True,
+                "models": info["models"]
+            })
+    return available
+
+
+def get_all_providers_with_status() -> List[Dict[str, Any]]:
+    """
+    Get all known providers with their connection status.
+    Shows all providers in the registry, indicating which have API keys.
+    """
+    providers = []
+    for provider_id, info in PROVIDER_REGISTRY.items():
+        api_key = os.environ.get(info["envVar"], "")
+        has_key = bool(api_key)
+        providers.append({
+            "id": provider_id,
+            "name": info["name"],
+            "envVar": info["envVar"],
+            "connected": has_key,
+            "hasApiKey": has_key,
+            "models": info["models"]
+        })
+    return providers
+
+
+def is_provider_configured(provider: str) -> bool:
+    """Check if a provider has an API key configured."""
+    if provider not in PROVIDER_REGISTRY:
+        return False
+    env_var = PROVIDER_REGISTRY[provider]["envVar"]
+    return bool(os.environ.get(env_var, ""))
+
 
 def get_provider_model_string(provider: str, model: str) -> str:
     """
@@ -169,35 +226,58 @@ def get_provider_model_string(provider: str, model: str) -> str:
     return model
 
 
-def list_providers() -> List[Dict[str, Any]]:
-    """List all supported providers with their configuration."""
+def list_providers(only_available: bool = False) -> List[Dict[str, Any]]:
+    """
+    List providers with their configuration and connection status.
+
+    Args:
+        only_available: If True, only return providers with API keys configured
+
+    Returns:
+        List of provider dictionaries with connection status
+    """
+    if only_available:
+        return get_available_providers()
+
     providers = []
-    for provider_id, info in SUPPORTED_PROVIDERS.items():
+    for provider_id, info in PROVIDER_REGISTRY.items():
         api_key = os.environ.get(info["envVar"], "")
+        has_key = bool(api_key)
         providers.append({
             "id": provider_id,
             "name": info["name"],
             "envVar": info["envVar"],
-            "hasApiKey": bool(api_key),
+            "hasApiKey": has_key,
+            "connected": has_key,
             "models": info["models"]
         })
     return providers
 
 
-def list_models(provider: Optional[str] = None) -> List[Dict[str, Any]]:
+def list_models(provider: Optional[str] = None, only_available: bool = False) -> List[Dict[str, Any]]:
     """
     List available models, optionally filtered by provider.
-    Returns models with normalized format.
+
+    Args:
+        provider: Optional provider ID to filter models
+        only_available: If True, only return models from providers with API keys
+
+    Returns:
+        List of model dictionaries with normalized format
     """
     models = []
 
-    providers_to_check = [provider] if provider else SUPPORTED_PROVIDERS.keys()
+    if only_available:
+        # Only include models from providers with API keys
+        providers_to_check = [provider] if provider else [p["id"] for p in get_available_providers()]
+    else:
+        providers_to_check = [provider] if provider else PROVIDER_REGISTRY.keys()
 
     for prov in providers_to_check:
-        if prov not in SUPPORTED_PROVIDERS:
+        if prov not in PROVIDER_REGISTRY:
             continue
 
-        info = SUPPORTED_PROVIDERS[prov]
+        info = PROVIDER_REGISTRY[prov]
         for model in info["models"]:
             models.append({
                 "id": model["id"],
@@ -214,8 +294,8 @@ def get_api_key(provider: str, env_var: Optional[str] = None) -> Optional[str]:
     if env_var:
         return os.environ.get(env_var)
 
-    if provider in SUPPORTED_PROVIDERS:
-        return os.environ.get(SUPPORTED_PROVIDERS[provider]["envVar"])
+    if provider in PROVIDER_REGISTRY:
+        return os.environ.get(PROVIDER_REGISTRY[provider]["envVar"])
 
     return None
 
@@ -226,10 +306,10 @@ def check_connectivity(provider: str, api_key: Optional[str] = None) -> bool:
     """
     global _provider_online
 
-    if provider not in SUPPORTED_PROVIDERS:
+    if provider not in PROVIDER_REGISTRY:
         return False
 
-    info = SUPPORTED_PROVIDERS[provider]
+    info = PROVIDER_REGISTRY[provider]
     key = api_key or os.environ.get(info["envVar"])
 
     if not key:
@@ -284,8 +364,8 @@ def chat(messages: List[Dict[str, str]], options: Dict[str, Any]) -> Dict[str, A
 
     # Get API key from environment if not provided
     if not api_key:
-        if provider in SUPPORTED_PROVIDERS:
-            api_key = os.environ.get(SUPPORTED_PROVIDERS[provider]["envVar"])
+        if provider in PROVIDER_REGISTRY:
+            api_key = os.environ.get(PROVIDER_REGISTRY[provider]["envVar"])
 
     if not api_key:
         raise ValueError(f"No API key found for provider '{provider}'")

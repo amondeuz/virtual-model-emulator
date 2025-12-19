@@ -1,5 +1,10 @@
 """
 OpenAI Chat Completions API adapter
+
+This module handles model name emulation - when a client requests a model name
+(e.g., "llama3"), it routes the request to the configured real provider/model
+(e.g., Anthropic Claude) while making the client believe it's talking to the
+requested model.
 """
 
 import random
@@ -74,8 +79,20 @@ def validate_request(body: Dict[str, Any]) -> bool:
 
 async def handle_chat_completion(request_body: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Handle a chat completion request.
-    Routes through LiteLLM to the configured provider.
+    Handle a chat completion request with model name emulation.
+
+    Model Name Emulation Logic:
+    1. If emulatedModelName is set:
+       - Request model MUST match emulatedModelName (or return error)
+       - Route to configured real provider/model
+       - Return response with emulatedModelName in the model field
+    2. If emulatedModelName is NOT set:
+       - Accept any model name (backward compatible behavior)
+       - Route to configured real provider/model
+       - Return response with the requested model name
+
+    This allows Pinokio apps to believe they're talking to a specific model
+    (e.g., "llama3") while actually using a different provider/model.
     """
     try:
         if not is_emulator_active():
@@ -96,10 +113,21 @@ async def handle_chat_completion(request_body: Dict[str, Any]) -> Dict[str, Any]
 
         provider = config.get("provider", "openai")
         model = config.get("model", "gpt-4")
+        emulated_model_name = config.get("emulatedModelName", "")
         api_key_env_var = config.get("apiKeyEnvVar", "OPENAI_API_KEY")
+
+        # Model name emulation check
+        # If an emulated model name is configured, the requested model must match it
+        if emulated_model_name and requested_model != emulated_model_name:
+            return create_error_response(
+                Exception(f'Model "{requested_model}" not found. This emulator is configured to respond to "{emulated_model_name}" requests.'),
+                404,
+                "model_not_found"
+            )
 
         log_request({
             "incomingModel": requested_model,
+            "emulatedModelName": emulated_model_name,
             "provider": provider,
             "model": model,
             "messageCount": len(messages) if messages else 1,

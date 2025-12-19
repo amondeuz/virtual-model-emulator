@@ -30,7 +30,7 @@
     button:disabled { opacity: 0.6; cursor: not-allowed; }
     .endpoint { background: #f3f7ff; border: 1px solid #d9e7ff; padding: 12px 14px; border-radius: 10px; font-family: monospace; font-size: 13px; word-break: break-all; margin-top: 12px; }
     .status-bar { display: flex; align-items: center; gap: 10px; padding: 12px 14px; background: #f8fafc; border: 1px solid #e5ecf3; border-radius: 10px; margin-top: 22px; flex-wrap: wrap; }
-    .indicator { display: inline-flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 999px; font-weight: 600; }
+    .indicator { display: inline-flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 999px; font-weight: 600; font-size: 12px; }
     .indicator .dot { width: 10px; height: 10px; border-radius: 50%; }
     .online { background: #e8f7ef; color: #1b6e34; }
     .online .dot { background: #22c55e; }
@@ -43,14 +43,52 @@
     .provider-info { display: flex; align-items: center; gap: 8px; margin-top: 4px; font-size: 13px; }
     .provider-info .check { color: #22c55e; }
     .provider-info .cross { color: #e35d6a; }
+
+    /* Provider cards for Connect section */
+    .provider-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin-top: 10px; }
+    .provider-card { background: #f8fafc; border: 1px solid #e5ecf3; border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+    .provider-card.connected { border-color: #22c55e; background: #f0fdf4; }
+    .provider-card-header { display: flex; justify-content: space-between; align-items: center; }
+    .provider-card-name { font-weight: 600; font-size: 14px; }
+    .provider-card-status { font-size: 11px; padding: 3px 8px; border-radius: 999px; }
+    .provider-card-status.connected { background: #dcfce7; color: #166534; }
+    .provider-card-status.not-connected { background: #fef2f2; color: #991b1b; }
+    .provider-card-env { font-size: 11px; color: #627384; font-family: monospace; }
+    .collapsible-header { cursor: pointer; display: flex; justify-content: space-between; align-items: center; padding: 10px 0; }
+    .collapsible-header:hover { color: #4a9eff; }
+    .collapsible-content { display: none; }
+    .collapsible-content.open { display: block; }
+    .arrow { transition: transform 0.2s; }
+    .arrow.open { transform: rotate(90deg); }
+
+    /* Emulated model name section styling */
+    .emulated-section { background: #f0f7ff; border: 1px solid #bfdbfe; border-radius: 10px; padding: 16px; margin-top: 18px; }
+    .emulated-section label { color: #1e40af; }
+    .emulated-hint { font-size: 12px; color: #3b82f6; margin-top: 6px; }
   </style>
 </head>
 <body>
   <div class="container">
     <header>
       <h1>Virtual Model Emulator</h1>
-      <p class="muted">OpenAI-compatible endpoint powered by LiteLLM. Supports 100+ AI providers.</p>
+      <p class="muted">Model name emulator powered by LiteLLM. Route any model name to any provider.</p>
     </header>
+
+    <!-- Connected Providers Section (Collapsible) -->
+    <div class="section">
+      <div class="collapsible-header" id="connect-header">
+        <label style="margin-bottom:0;cursor:pointer;">Connected Providers <span class="muted" style="font-weight:400">API keys found in environment</span></label>
+        <span class="arrow" id="connect-arrow">&#9654;</span>
+      </div>
+      <div class="collapsible-content" id="connect-content">
+        <div id="provider-cards" class="provider-grid">
+          <!-- Dynamically populated provider cards -->
+        </div>
+        <p class="api-key-hint" style="margin-top:12px;">
+          Add API keys to your <code>.env</code> file to connect providers. Only connected providers can be used.
+        </p>
+      </div>
+    </div>
 
     <div class="section">
       <label>Saved Configuration <span class="muted" style="font-weight:400">Load or save presets</span></label>
@@ -63,7 +101,7 @@
     </div>
 
     <div class="section">
-      <label>Provider</label>
+      <label>Real Provider <span class="muted" style="font-weight:400">The actual AI provider to use</span></label>
       <div class="row">
         <select id="provider-select">
           <option value="">-- Select a provider --</option>
@@ -74,7 +112,7 @@
     </div>
 
     <div class="section">
-      <label>Model</label>
+      <label>Real Model <span class="muted" style="font-weight:400">The actual model to use</span></label>
       <div class="row">
         <div class="search-dropdown">
           <input type="text" id="model-select" autocomplete="off" placeholder="Select a model...">
@@ -82,6 +120,16 @@
         </div>
         <button id="refresh-models" class="secondary">Refresh</button>
       </div>
+    </div>
+
+    <!-- Emulated Model Name Section -->
+    <div class="emulated-section">
+      <label>Emulated Model Name <span class="muted" style="font-weight:400;color:#3b82f6;">What Pinokio apps will request</span></label>
+      <input type="text" id="emulated-model-name" placeholder="e.g., llama3, gpt-4, mistral">
+      <p class="emulated-hint">
+        When a Pinokio app requests this model name, it will be routed to your configured provider/model above.
+        Leave empty to accept any model name.
+      </p>
     </div>
 
     <div class="section">
@@ -102,8 +150,11 @@
         <span class="dot"></span>
         <span class="indicator-text">Provider Offline</span>
       </div>
-      <div id="emulator-pill" class="pill">Emulator stopped</div>
-      <button id="refresh-health" class="icon-button" title="Refresh status">&#x21bb;</button>
+      <div id="emulator-indicator" class="indicator offline">
+        <span class="dot"></span>
+        <span class="indicator-text">Emulator Stopped</span>
+      </div>
+      <button id="refresh-health" class="icon-button" title="Refresh emulator status">&#x21bb;</button>
       <div id="status-message" class="message"></div>
     </div>
   </div>
@@ -117,14 +168,20 @@
     const modelSelect = document.getElementById('model-select');
     const modelsList = document.getElementById('models-list');
     const refreshModelsBtn = document.getElementById('refresh-models');
+    const emulatedModelNameInput = document.getElementById('emulated-model-name');
     const apiKeyEnvInput = document.getElementById('api-key-env');
     const startStopBtn = document.getElementById('start-stop');
     const endpointDisplay = document.getElementById('endpoint-display');
-    const indicatorEl = document.getElementById('provider-indicator');
-    const indicatorText = indicatorEl.querySelector('.indicator-text');
-    const emulatorPill = document.getElementById('emulator-pill');
+    const providerIndicatorEl = document.getElementById('provider-indicator');
+    const providerIndicatorText = providerIndicatorEl.querySelector('.indicator-text');
+    const emulatorIndicatorEl = document.getElementById('emulator-indicator');
+    const emulatorIndicatorText = emulatorIndicatorEl.querySelector('.indicator-text');
     const refreshHealthBtn = document.getElementById('refresh-health');
     const statusMessage = document.getElementById('status-message');
+    const connectHeader = document.getElementById('connect-header');
+    const connectContent = document.getElementById('connect-content');
+    const connectArrow = document.getElementById('connect-arrow');
+    const providerCardsEl = document.getElementById('provider-cards');
 
     let presets = [];
     let providers = [];
@@ -132,24 +189,56 @@
     let emulatorActive = false;
     let providerOnline = false;
 
+    // Toggle collapsible Connect section
+    connectHeader.addEventListener('click', function() {
+      connectContent.classList.toggle('open');
+      connectArrow.classList.toggle('open');
+    });
+
     function setMessage(text) {
       statusMessage.textContent = text || '';
     }
 
-    function setIndicator(online, providerName) {
+    function setProviderIndicator(online, providerName) {
       providerName = providerName || 'Provider';
       providerOnline = online;
-      indicatorEl.classList.toggle('online', online);
-      indicatorEl.classList.toggle('offline', !online);
-      indicatorText.textContent = online ? (providerName + ' Online') : (providerName + ' Offline');
+      providerIndicatorEl.classList.toggle('online', online);
+      providerIndicatorEl.classList.toggle('offline', !online);
+      providerIndicatorText.textContent = online ? (providerName + ' Online') : (providerName + ' Offline');
     }
 
-    function setEmulatorState(active) {
+    function setEmulatorIndicator(active) {
       emulatorActive = active;
-      emulatorPill.textContent = active ? 'Emulator running' : 'Emulator stopped';
+      emulatorIndicatorEl.classList.toggle('online', active);
+      emulatorIndicatorEl.classList.toggle('offline', !active);
+      emulatorIndicatorText.textContent = active ? 'Emulator Running' : 'Emulator Stopped';
       startStopBtn.textContent = active ? 'Stop' : 'Start';
       startStopBtn.classList.toggle('danger', active);
       startStopBtn.classList.toggle('primary', !active);
+    }
+
+    function populateProviderCards() {
+      providerCardsEl.innerHTML = '';
+      var connectedCount = 0;
+      providers.forEach(function(provider) {
+        var card = document.createElement('div');
+        card.className = 'provider-card' + (provider.connected ? ' connected' : '');
+        card.innerHTML = '<div class="provider-card-header">' +
+          '<span class="provider-card-name">' + provider.name + '</span>' +
+          '<span class="provider-card-status ' + (provider.connected ? 'connected' : 'not-connected') + '">' +
+          (provider.connected ? 'Connected' : 'Not Connected') + '</span>' +
+          '</div>' +
+          '<div class="provider-card-env">' + provider.envVar + '</div>';
+        providerCardsEl.appendChild(card);
+        if (provider.connected) connectedCount++;
+      });
+
+      // Update header to show connected count
+      var headerLabel = connectHeader.querySelector('label');
+      if (headerLabel) {
+        headerLabel.innerHTML = 'Connected Providers <span class="muted" style="font-weight:400">' +
+          connectedCount + ' of ' + providers.length + ' connected</span>';
+      }
     }
 
     function updateProviderInfo(provider) {
@@ -275,6 +364,7 @@
 
       providerSelect.value = preset.provider || '';
       modelSelect.value = preset.model || '';
+      emulatedModelNameInput.value = preset.emulatedModelName || '';
       apiKeyEnvInput.value = preset.apiKeyEnvVar || '';
 
       var provider = providers.find(function(p) { return p.id === preset.provider; });
@@ -299,6 +389,7 @@
       var body = {
         provider: providerSelect.value,
         model: modelSelect.value,
+        emulatedModelName: emulatedModelNameInput.value,
         apiKeyEnvVar: apiKeyEnvInput.value
       };
       return fetch('/config/save', {
@@ -311,6 +402,7 @@
     function handleStartStop() {
       var provider = providerSelect.value;
       var model = modelSelect.value;
+      var emulatedModelName = emulatedModelNameInput.value;
 
       if (!provider) {
         setMessage('Select a provider first.');
@@ -328,7 +420,7 @@
           .then(function(res) { return res.json(); })
           .then(function(data) {
             if (data.success) {
-              setEmulatorState(false);
+              setEmulatorIndicator(false);
               setMessage('Emulator stopped.');
             } else {
               setMessage(data.error || 'Failed to stop emulator.');
@@ -349,6 +441,7 @@
               body: JSON.stringify({
                 provider: provider,
                 model: model,
+                emulatedModelName: emulatedModelName,
                 apiKeyEnvVar: apiKeyEnvInput.value
               })
             });
@@ -356,10 +449,11 @@
           .then(function(res) { return res.json(); })
           .then(function(data) {
             if (data.success) {
-              setEmulatorState(true);
+              setEmulatorIndicator(true);
               var providerInfo = providers.find(function(p) { return p.id === provider; });
-              setIndicator(true, providerInfo ? providerInfo.name : provider);
-              setMessage('Emulator started.');
+              setProviderIndicator(true, providerInfo ? providerInfo.name : provider);
+              var emulatedInfo = emulatedModelName ? ' (emulating "' + emulatedModelName + '")' : '';
+              setMessage('Emulator started' + emulatedInfo + '.');
             } else {
               setMessage(data.error || 'Failed to start emulator.');
             }
@@ -387,11 +481,11 @@
         .then(function(res) { return res.json(); })
         .then(function(data) {
           var providerInfo = providers.find(function(p) { return p.id === provider; });
-          setIndicator(data.online === true, providerInfo ? providerInfo.name : provider);
+          setProviderIndicator(data.online === true, providerInfo ? providerInfo.name : provider);
           setMessage(data.message || 'Connection tested.');
         })
         .catch(function(err) {
-          setIndicator(false);
+          setProviderIndicator(false);
           setMessage('Connection test failed: ' + err.message);
         })
         .finally(function() {
@@ -421,17 +515,24 @@
     }
 
     function refreshHealth() {
-      fetch('/health')
+      // Use the new /emulator/status endpoint for comprehensive status
+      fetch('/emulator/status')
         .then(function(res) { return res.json(); })
         .then(function(data) {
-          var provider = providerSelect.value;
-          var providerInfo = providers.find(function(p) { return p.id === provider; });
-          setIndicator(data.online === true, providerInfo ? providerInfo.name : provider);
-          setMessage(data.message || 'Health checked.');
+          var providerName = data.currentConfig ? data.currentConfig.providerName : 'Provider';
+          setProviderIndicator(data.providerOnline === true, providerName);
+          setEmulatorIndicator(data.emulatorRunning === true);
+
+          var statusMsg = data.emulatorRunning ? 'Emulator running' : 'Emulator stopped';
+          if (data.currentConfig && data.currentConfig.emulatedModelName) {
+            statusMsg += ' (emulating "' + data.currentConfig.emulatedModelName + '")';
+          }
+          setMessage(statusMsg);
         })
         .catch(function(err) {
-          setIndicator(false);
-          setMessage('Unable to reach provider: ' + err.message);
+          setProviderIndicator(false);
+          setEmulatorIndicator(false);
+          setMessage('Unable to get status: ' + err.message);
         });
     }
 
@@ -444,6 +545,7 @@
         name: name.trim(),
         provider: providerSelect.value,
         model: modelSelect.value,
+        emulatedModelName: emulatedModelNameInput.value,
         apiKeyEnvVar: apiKeyEnvInput.value
       };
 
@@ -481,11 +583,13 @@
           models = state.models || [];
 
           populateProviders();
+          populateProviderCards();
           populatePresets();
 
           if (state.config) {
             providerSelect.value = state.config.provider || '';
             modelSelect.value = state.config.model || '';
+            emulatedModelNameInput.value = state.config.emulatedModelName || '';
             apiKeyEnvInput.value = state.config.apiKeyEnvVar || '';
 
             var provider = providers.find(function(p) { return p.id === state.config.provider; });
@@ -495,14 +599,14 @@
           }
 
           modelDropdown.refreshOptions();
-          setEmulatorState(state.emulatorActive);
+          setEmulatorIndicator(state.emulatorActive);
 
           if (state.endpoint) {
             endpointDisplay.textContent = 'Endpoint: ' + state.endpoint;
           }
 
           var currentProvider = providers.find(function(p) { return p.id === providerSelect.value; });
-          setIndicator(state.providerOnline !== false, currentProvider ? currentProvider.name : 'Provider');
+          setProviderIndicator(state.providerOnline !== false, currentProvider ? currentProvider.name : 'Provider');
 
           setMessage('Ready.');
           return refreshHealth();
