@@ -27,7 +27,8 @@ from .openai_adapter import handle_chat_completion
 from .logger import log_info, log_error, get_health_info, set_config_getter
 from .litellm_client import (
     list_models, list_providers, check_connectivity, is_provider_online,
-    SUPPORTED_PROVIDERS
+    get_available_providers, get_all_providers_with_status, is_provider_configured,
+    PROVIDER_REGISTRY, SUPPORTED_PROVIDERS
 )
 
 # Load environment variables from .env file
@@ -151,8 +152,8 @@ async def lifespan(app: FastAPI):
 # Create FastAPI app
 app = FastAPI(
     title="Virtual Model Emulator",
-    description="OpenAI-compatible endpoint backed by LiteLLM",
-    version="2.0.0-beta.1",
+    description="OpenAI-compatible endpoint with model name emulation backed by LiteLLM",
+    version="2.0.0-beta.2",
     lifespan=lifespan
 )
 
@@ -184,7 +185,7 @@ async def health_check():
         config = get_config()
         provider = config.get("provider", "openai")
         online = check_connectivity(provider)
-        provider_name = SUPPORTED_PROVIDERS.get(provider, {}).get("name", provider)
+        provider_name = PROVIDER_REGISTRY.get(provider, {}).get("name", provider)
         return JSONResponse(content={
             "online": online,
             "provider": provider,
@@ -215,6 +216,8 @@ async def config_save(request: Request):
         updates["provider"] = body["provider"]
     if "model" in body:
         updates["model"] = body["model"]
+    if "emulatedModelName" in body:
+        updates["emulatedModelName"] = body["emulatedModelName"]
     if "apiKeyEnvVar" in body:
         updates["apiKeyEnvVar"] = body["apiKeyEnvVar"]
     if "port" in body:
@@ -239,6 +242,7 @@ async def config_save_preset(request: Request):
     preset_id = body.get("id")
     provider = body.get("provider")
     model = body.get("model")
+    emulated_model_name = body.get("emulatedModelName", "")
     api_key_env_var = body.get("apiKeyEnvVar", "")
 
     if not name:
@@ -267,7 +271,7 @@ async def config_save_preset(request: Request):
                 content={"success": False, "error": "Preset not found"}
             )
 
-        ok = update_saved_config(preset_id, name, provider, model, api_key_env_var)
+        ok = update_saved_config(preset_id, name, provider, model, api_key_env_var, emulated_model_name)
         if ok:
             updated = get_saved_config_by_id(preset_id)
             return JSONResponse(content={"success": True, "preset": updated})
@@ -278,7 +282,7 @@ async def config_save_preset(request: Request):
             )
     else:
         # Create new preset
-        preset = add_saved_config(name, provider, model, api_key_env_var)
+        preset = add_saved_config(name, provider, model, api_key_env_var, emulated_model_name)
         if preset:
             return JSONResponse(content={"success": True, "preset": preset})
         else:
@@ -307,12 +311,21 @@ async def get_models_endpoint(force: bool = Query(False), provider: Optional[str
 # Emulator control
 @app.post("/emulator/start")
 async def emulator_start(request: Request):
-    """Start the emulator with specified configuration."""
+    """
+    Start the emulator with specified configuration.
+
+    Body parameters:
+        provider: The actual provider to use (e.g., "anthropic")
+        model: The actual model to use (e.g., "claude-3-5-sonnet-20241022")
+        apiKeyEnvVar: Environment variable name for the API key
+        emulatedModelName: The model name that Pinokio apps will request (e.g., "llama3")
+    """
     body = await request.json()
 
     provider = body.get("provider")
     model = body.get("model")
     api_key_env_var = body.get("apiKeyEnvVar", "")
+    emulated_model_name = body.get("emulatedModelName", "")
 
     if not provider:
         return JSONResponse(
@@ -328,7 +341,7 @@ async def emulator_start(request: Request):
 
     # Check provider connectivity
     if not check_connectivity(provider):
-        provider_name = SUPPORTED_PROVIDERS.get(provider, {}).get("name", provider)
+        provider_name = PROVIDER_REGISTRY.get(provider, {}).get("name", provider)
         return JSONResponse(
             status_code=503,
             content={"success": False, "error": f"{provider_name} is offline or API key is invalid"}
@@ -343,13 +356,15 @@ async def emulator_start(request: Request):
             content={"success": False, "error": f'Model "{model}" not found for provider'}
         )
 
-    if start_emulator(provider, model, api_key_env_var):
-        log_info(f"Emulator started: {provider}/{model}")
+    if start_emulator(provider, model, api_key_env_var, emulated_model_name):
+        emulated_info = f" (emulating '{emulated_model_name}')" if emulated_model_name else ""
+        log_info(f"Emulator started: {provider}/{model}{emulated_info}")
         return JSONResponse(content={
             "success": True,
             "config": {
                 "provider": provider,
                 "model": model,
+                "emulatedModelName": emulated_model_name,
                 "apiKeyEnvVar": api_key_env_var
             }
         })
@@ -371,6 +386,40 @@ async def emulator_stop():
             status_code=500,
             content={"success": False, "error": "Failed to stop"}
         )
+
+
+@app.get("/emulator/status")
+async def emulator_status():
+    """
+    Get detailed emulator status.
+
+    This endpoint provides information about:
+    - Whether the emulator is actively routing requests
+    - Whether the configured provider is online
+    - The current configuration including emulated model name
+
+    Different from /health which only checks provider connectivity.
+    """
+    config = get_config()
+    provider = config.get("provider", "openai")
+    provider_online = is_provider_online(provider)
+
+    # Get provider name for display
+    provider_name = PROVIDER_REGISTRY.get(provider, {}).get("name", provider)
+
+    return JSONResponse(content={
+        "emulatorRunning": is_emulator_active(),
+        "providerOnline": provider_online,
+        "providerConfigured": is_provider_configured(provider),
+        "currentConfig": {
+            "provider": provider,
+            "providerName": provider_name,
+            "model": config.get("model", ""),
+            "emulatedModelName": config.get("emulatedModelName", ""),
+            "apiKeyEnvVar": config.get("apiKeyEnvVar", "")
+        },
+        "lastConfig": get_last_config()
+    })
 
 
 # Shutdown endpoint

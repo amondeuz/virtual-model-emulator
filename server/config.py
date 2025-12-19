@@ -41,6 +41,7 @@ def get_default_config() -> Dict[str, Any]:
         "port": 11434,
         "provider": "openai",
         "model": "gpt-4",
+        "emulatedModelName": "",  # What Pinokio apps will request (e.g., "llama3", "gpt-4")
         "apiKeyEnvVar": "OPENAI_API_KEY",
         "emulatorActive": False,
         "lastConfig": None,
@@ -91,18 +92,29 @@ def is_emulator_active() -> bool:
     return _emulator_active
 
 
-def start_emulator(provider: str, model: str, api_key_env_var: str) -> bool:
-    """Start the emulator with the given configuration."""
+def start_emulator(provider: str, model: str, api_key_env_var: str,
+                   emulated_model_name: str = "") -> bool:
+    """
+    Start the emulator with the given configuration.
+
+    Args:
+        provider: The actual provider to use (e.g., "anthropic")
+        model: The actual model to use (e.g., "claude-3-5-sonnet-20241022")
+        api_key_env_var: Environment variable name for the API key
+        emulated_model_name: The model name that Pinokio apps will request (e.g., "llama3")
+    """
     global _emulator_active
 
     success = update_config({
         "provider": provider,
         "model": model,
+        "emulatedModelName": emulated_model_name,
         "apiKeyEnvVar": api_key_env_var,
         "emulatorActive": True,
         "lastConfig": {
             "provider": provider,
             "model": model,
+            "emulatedModelName": emulated_model_name,
             "apiKeyEnvVar": api_key_env_var
         }
     })
@@ -199,7 +211,8 @@ def save_saved_configs(configs: List[Dict[str, Any]]) -> bool:
         return False
 
 
-def add_saved_config(name: str, provider: str, model: str, api_key_env_var: str) -> Optional[Dict[str, Any]]:
+def add_saved_config(name: str, provider: str, model: str, api_key_env_var: str,
+                     emulated_model_name: str = "") -> Optional[Dict[str, Any]]:
     """Add a new saved configuration preset."""
     configs = get_saved_configs()
     new_config = {
@@ -207,6 +220,7 @@ def add_saved_config(name: str, provider: str, model: str, api_key_env_var: str)
         "name": name,
         "provider": provider,
         "model": model,
+        "emulatedModelName": emulated_model_name,
         "apiKeyEnvVar": api_key_env_var
     }
     configs.append(new_config)
@@ -214,7 +228,8 @@ def add_saved_config(name: str, provider: str, model: str, api_key_env_var: str)
 
 
 def update_saved_config(config_id: str, new_name: Optional[str], provider: Optional[str],
-                        model: Optional[str], api_key_env_var: Optional[str]) -> bool:
+                        model: Optional[str], api_key_env_var: Optional[str],
+                        emulated_model_name: Optional[str] = None) -> bool:
     """Update an existing saved configuration preset."""
     configs = get_saved_configs()
     config = next((c for c in configs if c.get("id") == config_id), None)
@@ -229,6 +244,8 @@ def update_saved_config(config_id: str, new_name: Optional[str], provider: Optio
         config["model"] = model
     if api_key_env_var is not None:
         config["apiKeyEnvVar"] = api_key_env_var
+    if emulated_model_name is not None:
+        config["emulatedModelName"] = emulated_model_name
 
     return save_saved_configs(configs)
 
