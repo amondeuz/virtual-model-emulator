@@ -11,9 +11,10 @@
       "method": "shell.run",
       "params": {
         "message": "python -m server.main",
+        "venv": "env",
         "on": [
           {
-            "event": "/http:\\/\\/localhost:[0-9]+\\/config\\.html/",
+            "event": "/(http:\\/\\/localhost:[0-9]+\\/config\\.html)/",
             "done": true
           }
         ]
@@ -22,13 +23,13 @@
     {
       "method": "local.set",
       "params": {
-        "url": "{{input.event[0]}}"
+        "url": "{{input.event[1]}}"
       }
     },
     {
       "method": "log",
       "params": {
-        "raw": "UI ready at {{input.event[0]}}"
+        "raw": "UI ready at {{input.event[1]}}"
       }
     }
   ]

@@ -9,8 +9,15 @@
     {
       "method": "shell.run",
       "params": {
-        "message": "pip install -r requirements.txt --break-system-packages",
+        "message": "uv pip install -r requirements.txt",
+        "venv": "env",
         "path": "."
+      }
+    },
+    {
+      "method": "log",
+      "params": {
+        "raw": "Installation complete!"
       }
     }
   ]
