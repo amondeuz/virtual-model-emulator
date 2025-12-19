@@ -45,7 +45,11 @@ module.exports = {
       ];
     }
 
+    // Build the connect URL - same host as the main URL
+    const connectUrl = url.replace('/config.html', '/connect.html');
+
     return [
+      { text: 'Connect', icon: 'fa-solid fa-plug', href: connectUrl },
       { text: 'Emulator', icon: 'fa-solid fa-robot', href: url, default: true },
       updateItem
     ];

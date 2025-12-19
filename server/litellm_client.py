@@ -1,8 +1,13 @@
 """
 LiteLLM integration client for multi-provider AI access
 
-This module provides dynamic provider detection - providers are only shown as
-available when their API keys are present in the environment.
+This module provides dynamic provider detection based on:
+1. API keys stored in accounts (via Connect UI)
+2. API keys present in environment variables
+
+The PROVIDER_REGISTRY defines known providers and their available models.
+At runtime, providers are filtered based on whether an API key is available
+either from saved accounts or environment variables.
 """
 
 import math
@@ -289,13 +294,51 @@ def list_models(provider: Optional[str] = None, only_available: bool = False) ->
     return models
 
 
-def get_api_key(provider: str, env_var: Optional[str] = None) -> Optional[str]:
-    """Get API key for a provider from environment."""
-    if env_var:
-        return os.environ.get(env_var)
+def get_api_key(provider: str, env_var: Optional[str] = None, account_name: Optional[str] = None) -> Optional[str]:
+    """
+    Get API key for a provider.
 
+    Priority order:
+    1. If account_name is provided, look up from saved accounts
+    2. If env_var is provided, look up from environment
+    3. Fall back to provider's default environment variable
+    4. Fall back to any saved account for this provider
+
+    Args:
+        provider: Provider ID (e.g., "anthropic")
+        env_var: Optional environment variable name
+        account_name: Optional account name to look up
+
+    Returns:
+        API key string or None if not found
+    """
+    # Import here to avoid circular import
+    from .config import get_account_api_key, get_accounts_for_provider
+
+    # Priority 1: Specific account
+    if account_name:
+        key = get_account_api_key(provider, account_name)
+        if key:
+            return key
+
+    # Priority 2: Explicit environment variable
+    if env_var:
+        key = os.environ.get(env_var)
+        if key:
+            return key
+
+    # Priority 3: Provider's default environment variable
     if provider in PROVIDER_REGISTRY:
-        return os.environ.get(PROVIDER_REGISTRY[provider]["envVar"])
+        key = os.environ.get(PROVIDER_REGISTRY[provider]["envVar"])
+        if key:
+            return key
+
+    # Priority 4: Any saved account for this provider
+    accounts = get_accounts_for_provider(provider)
+    if accounts:
+        key = accounts[0].get("apiKey")
+        if key:
+            return key
 
     return None
 
@@ -351,7 +394,7 @@ def chat(messages: List[Dict[str, str]], options: Dict[str, Any]) -> Dict[str, A
 
     Args:
         messages: List of message dicts with 'role' and 'content'
-        options: Dict with 'provider', 'model', 'api_key', and optional 'temperature', 'max_tokens'
+        options: Dict with 'provider', 'model', 'api_key', 'account', and optional 'temperature', 'max_tokens'
 
     Returns:
         {"text": str, "usage": dict}
@@ -361,11 +404,11 @@ def chat(messages: List[Dict[str, str]], options: Dict[str, Any]) -> Dict[str, A
     provider = options.get("provider", "openai")
     model = options.get("model", "gpt-4")
     api_key = options.get("api_key")
+    account = options.get("account")
 
-    # Get API key from environment if not provided
+    # Get API key using priority order: provided key > account > environment
     if not api_key:
-        if provider in PROVIDER_REGISTRY:
-            api_key = os.environ.get(PROVIDER_REGISTRY[provider]["envVar"])
+        api_key = get_api_key(provider, account_name=account)
 
     if not api_key:
         raise ValueError(f"No API key found for provider '{provider}'")
