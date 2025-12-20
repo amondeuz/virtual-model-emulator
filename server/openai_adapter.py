@@ -111,6 +111,7 @@ async def handle_chat_completion(request_body: Dict[str, Any]) -> Dict[str, Any]
         temperature = request_body.get("temperature")
         max_tokens = request_body.get("max_tokens") or request_body.get("max_completion_tokens")
 
+        account = config.get("account", "")
         provider = config.get("provider", "openai")
         model = config.get("model", "gpt-4")
         emulated_model_name = config.get("emulatedModelName", "")
@@ -138,7 +139,8 @@ async def handle_chat_completion(request_body: Dict[str, Any]) -> Dict[str, Any]
         options = {
             "provider": provider,
             "model": model,
-            "api_key": None  # Will be read from environment using api_key_env_var
+            "account": account,  # Account name for credential lookup
+            "api_key": None  # Will be resolved via get_api_key (account > env)
         }
 
         if temperature is not None:

@@ -11,6 +11,7 @@
     h1 { margin: 0 0 6px; font-size: 24px; }
     .muted { color: #627384; font-size: 14px; margin: 0; }
     .section { margin-top: 18px; }
+    .step-number { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; background: #3b82f6; color: white; border-radius: 50%; font-size: 13px; font-weight: 600; margin-right: 8px; }
     label { display: block; font-weight: 600; margin-bottom: 6px; }
     input[type="text"], select { width: 100%; padding: 11px 12px; border: 1px solid #d9e1ec; border-radius: 10px; font-size: 14px; }
     input:focus, select:focus { outline: none; border-color: #4a9eff; box-shadow: 0 0 0 3px rgba(74,158,255,0.15); }
@@ -28,7 +29,6 @@
     .danger { background: #e35d6a; color: white; }
     .success { background: #22c55e; color: white; }
     button:disabled { opacity: 0.6; cursor: not-allowed; }
-    .endpoint { background: #f3f7ff; border: 1px solid #d9e7ff; padding: 12px 14px; border-radius: 10px; font-family: monospace; font-size: 13px; word-break: break-all; margin-top: 12px; }
     .status-bar { display: flex; align-items: center; gap: 10px; padding: 12px 14px; background: #f8fafc; border: 1px solid #e5ecf3; border-radius: 10px; margin-top: 22px; flex-wrap: wrap; }
     .indicator { display: inline-flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 999px; font-weight: 600; font-size: 12px; }
     .indicator .dot { width: 10px; height: 10px; border-radius: 50%; }
@@ -39,10 +39,7 @@
     .icon-button { background: #eef2f7; color: #1f2933; width: 36px; height: 36px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: bold; }
     .message { flex: 1; color: #1f2933; font-size: 13px; min-height: 18px; }
     .pill { display: inline-block; padding: 6px 10px; border-radius: 999px; background: #eef2f7; font-size: 12px; margin-left: 6px; }
-    .api-key-hint { font-size: 12px; color: #627384; margin-top: 4px; }
-    .provider-info { display: flex; align-items: center; gap: 8px; margin-top: 4px; font-size: 13px; }
-    .provider-info .check { color: #22c55e; }
-    .provider-info .cross { color: #e35d6a; }
+    .hint { font-size: 12px; color: #627384; margin-top: 4px; }
 
     /* Provider cards for Connect section */
     .provider-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin-top: 10px; }
@@ -65,6 +62,15 @@
     .emulated-section { background: #f0f7ff; border: 1px solid #bfdbfe; border-radius: 10px; padding: 16px; margin-top: 18px; }
     .emulated-section label { color: #1e40af; }
     .emulated-hint { font-size: 12px; color: #3b82f6; margin-top: 6px; }
+
+    /* Nav link */
+    .nav-link { display: inline-flex; align-items: center; gap: 6px; color: #3b82f6; text-decoration: none; font-size: 13px; margin-top: 12px; }
+    .nav-link:hover { text-decoration: underline; }
+
+    /* No accounts warning */
+    .warning-box { background: #fef3c7; border: 1px solid #fcd34d; border-radius: 10px; padding: 14px; margin-bottom: 18px; }
+    .warning-box h4 { margin: 0 0 6px; font-size: 14px; color: #92400e; }
+    .warning-box p { margin: 0; font-size: 13px; color: #92400e; }
   </style>
 </head>
 <body>
@@ -72,20 +78,26 @@
     <header>
       <h1>Virtual Model Emulator</h1>
       <p class="muted">Model name emulator powered by LiteLLM. Route any model name to any provider.</p>
+      <a href="/connect.html" class="nav-link">Manage Provider Accounts &rarr;</a>
     </header>
+
+    <div id="no-accounts-warning" class="warning-box" style="display:none;">
+      <h4>No accounts connected</h4>
+      <p>You need to connect at least one provider account before using the emulator. <a href="/connect.html">Connect a provider &rarr;</a></p>
+    </div>
 
     <!-- Connected Providers Section (Collapsible) -->
     <div class="section">
       <div class="collapsible-header" id="connect-header">
-        <label style="margin-bottom:0;cursor:pointer;">Connected Providers <span class="muted" style="font-weight:400">API keys found in environment</span></label>
+        <label style="margin-bottom:0;cursor:pointer;">Connected Providers <span class="muted" style="font-weight:400">API keys found</span></label>
         <span class="arrow" id="connect-arrow">&#9654;</span>
       </div>
       <div class="collapsible-content" id="connect-content">
         <div id="provider-cards" class="provider-grid">
           <!-- Dynamically populated provider cards -->
         </div>
-        <p class="api-key-hint" style="margin-top:12px;">
-          Add API keys to your <code>.env</code> file to connect providers. Only connected providers can be used.
+        <p class="hint" style="margin-top:12px;">
+          <a href="/connect.html">Manage accounts &rarr;</a>
         </p>
       </div>
     </div>
@@ -100,19 +112,30 @@
       </div>
     </div>
 
+    <!-- Step 1: Account -->
     <div class="section">
-      <label>Real Provider <span class="muted" style="font-weight:400">The actual AI provider to use</span></label>
+      <label><span class="step-number">1</span> Account <span class="muted" style="font-weight:400">Which credential to use</span></label>
+      <select id="account-select">
+        <option value="">-- Select an account --</option>
+      </select>
+      <p class="hint">Select from connected accounts. If you have multiple for the same provider, choose which credential to use.</p>
+    </div>
+
+    <!-- Step 2: Provider -->
+    <div class="section">
+      <label><span class="step-number">2</span> Provider <span class="muted" style="font-weight:400">The actual AI provider</span></label>
       <div class="row">
         <select id="provider-select">
           <option value="">-- Select a provider --</option>
         </select>
         <button id="test-connection" class="secondary">Test Connection</button>
       </div>
-      <div id="provider-info" class="provider-info"></div>
+      <p class="hint">Automatically filtered based on selected account.</p>
     </div>
 
+    <!-- Step 3: Real Model -->
     <div class="section">
-      <label>Real Model <span class="muted" style="font-weight:400">The actual model to use</span></label>
+      <label><span class="step-number">3</span> Real Model <span class="muted" style="font-weight:400">The actual model to use</span></label>
       <div class="row">
         <div class="search-dropdown">
           <input type="text" id="model-select" autocomplete="off" placeholder="Select a model...">
@@ -122,10 +145,34 @@
       </div>
     </div>
 
-    <!-- Emulated Model Name Section -->
+    <!-- Step 4: Emulated Model Name -->
     <div class="emulated-section">
-      <label>Emulated Model Name <span class="muted" style="font-weight:400;color:#3b82f6;">What Pinokio apps will request</span></label>
-      <input type="text" id="emulated-model-name" placeholder="e.g., llama3, gpt-4, mistral">
+      <label><span class="step-number" style="background:#1e40af;">4</span> Emulated Model Name <span class="muted" style="font-weight:400;color:#3b82f6;">What Pinokio apps will request</span></label>
+      <select id="emulated-model-select">
+        <option value="">-- Select or enter custom --</option>
+        <optgroup label="Popular Models">
+          <option value="gpt-4">gpt-4 (OpenAI)</option>
+          <option value="gpt-4-turbo">gpt-4-turbo (OpenAI)</option>
+          <option value="gpt-3.5-turbo">gpt-3.5-turbo (OpenAI)</option>
+          <option value="claude-3-opus">claude-3-opus (Anthropic)</option>
+          <option value="claude-3-sonnet">claude-3-sonnet (Anthropic)</option>
+          <option value="claude-3-haiku">claude-3-haiku (Anthropic)</option>
+          <option value="llama3-70b">llama3-70b (Meta)</option>
+          <option value="llama3-8b">llama3-8b (Meta)</option>
+          <option value="llama3.1-405b">llama3.1-405b (Meta)</option>
+          <option value="mistral-large">mistral-large (Mistral)</option>
+          <option value="mistral-medium">mistral-medium (Mistral)</option>
+          <option value="mixtral-8x7b">mixtral-8x7b (Mistral)</option>
+          <option value="gemini-pro">gemini-pro (Google)</option>
+          <option value="gemini-1.5-pro">gemini-1.5-pro (Google)</option>
+          <option value="command-r-plus">command-r-plus (Cohere)</option>
+          <option value="command-r">command-r (Cohere)</option>
+          <option value="deepseek-coder">deepseek-coder (DeepSeek)</option>
+          <option value="qwen-72b">qwen-72b (Alibaba)</option>
+        </optgroup>
+        <option value="custom">Enter custom model name...</option>
+      </select>
+      <input type="text" id="custom-emulated-name" placeholder="Custom model name (e.g., my-model)" style="display:none; margin-top:8px;">
       <p class="emulated-hint">
         When a Pinokio app requests this model name, it will be routed to your configured provider/model above.
         Leave empty to accept any model name.
@@ -133,16 +180,10 @@
     </div>
 
     <div class="section">
-      <label>API Key Environment Variable</label>
       <div class="row">
-        <input type="text" id="api-key-env" placeholder="e.g., OPENAI_API_KEY">
+        <div></div>
         <button id="start-stop" class="primary">Start</button>
       </div>
-      <p class="api-key-hint">The server reads the API key from this environment variable. Set it in your .env file or system environment.</p>
-    </div>
-
-    <div class="endpoint" id="endpoint-display">
-      Endpoint: http://localhost:11434/v1/chat/completions
     </div>
 
     <div class="status-bar">
@@ -162,16 +203,15 @@
   <script>
     const presetSelect = document.getElementById('preset-select');
     const presetActionBtn = document.getElementById('preset-action');
+    const accountSelect = document.getElementById('account-select');
     const providerSelect = document.getElementById('provider-select');
     const testConnectionBtn = document.getElementById('test-connection');
-    const providerInfoEl = document.getElementById('provider-info');
     const modelSelect = document.getElementById('model-select');
     const modelsList = document.getElementById('models-list');
     const refreshModelsBtn = document.getElementById('refresh-models');
-    const emulatedModelNameInput = document.getElementById('emulated-model-name');
-    const apiKeyEnvInput = document.getElementById('api-key-env');
+    const emulatedModelSelect = document.getElementById('emulated-model-select');
+    const customEmulatedName = document.getElementById('custom-emulated-name');
     const startStopBtn = document.getElementById('start-stop');
-    const endpointDisplay = document.getElementById('endpoint-display');
     const providerIndicatorEl = document.getElementById('provider-indicator');
     const providerIndicatorText = providerIndicatorEl.querySelector('.indicator-text');
     const emulatorIndicatorEl = document.getElementById('emulator-indicator');
@@ -182,10 +222,12 @@
     const connectContent = document.getElementById('connect-content');
     const connectArrow = document.getElementById('connect-arrow');
     const providerCardsEl = document.getElementById('provider-cards');
+    const noAccountsWarning = document.getElementById('no-accounts-warning');
 
     let presets = [];
     let providers = [];
     let models = [];
+    let accounts = [];
     let emulatorActive = false;
     let providerOnline = false;
 
@@ -194,6 +236,40 @@
       connectContent.classList.toggle('open');
       connectArrow.classList.toggle('open');
     });
+
+    // Toggle custom emulated name input
+    emulatedModelSelect.addEventListener('change', function() {
+      if (this.value === 'custom') {
+        customEmulatedName.style.display = 'block';
+        customEmulatedName.focus();
+      } else {
+        customEmulatedName.style.display = 'none';
+      }
+    });
+
+    function getEmulatedModelName() {
+      if (emulatedModelSelect.value === 'custom') {
+        return customEmulatedName.value.trim();
+      }
+      return emulatedModelSelect.value;
+    }
+
+    function setEmulatedModelName(name) {
+      // Check if the name is in the dropdown options
+      const options = Array.from(emulatedModelSelect.options);
+      const found = options.find(opt => opt.value === name && opt.value !== 'custom');
+      if (found) {
+        emulatedModelSelect.value = name;
+        customEmulatedName.style.display = 'none';
+      } else if (name) {
+        emulatedModelSelect.value = 'custom';
+        customEmulatedName.value = name;
+        customEmulatedName.style.display = 'block';
+      } else {
+        emulatedModelSelect.value = '';
+        customEmulatedName.style.display = 'none';
+      }
+    }
 
     function setMessage(text) {
       statusMessage.textContent = text || '';
@@ -220,17 +296,30 @@
     function populateProviderCards() {
       providerCardsEl.innerHTML = '';
       var connectedCount = 0;
+
+      // Group accounts by provider
+      var accountsByProvider = {};
+      accounts.forEach(function(acc) {
+        if (!accountsByProvider[acc.provider]) {
+          accountsByProvider[acc.provider] = [];
+        }
+        accountsByProvider[acc.provider].push(acc);
+      });
+
       providers.forEach(function(provider) {
+        var providerAccounts = accountsByProvider[provider.id] || [];
+        var connected = providerAccounts.length > 0 || provider.hasApiKey;
+        if (connected) connectedCount++;
+
         var card = document.createElement('div');
-        card.className = 'provider-card' + (provider.connected ? ' connected' : '');
+        card.className = 'provider-card' + (connected ? ' connected' : '');
         card.innerHTML = '<div class="provider-card-header">' +
           '<span class="provider-card-name">' + provider.name + '</span>' +
-          '<span class="provider-card-status ' + (provider.connected ? 'connected' : 'not-connected') + '">' +
-          (provider.connected ? 'Connected' : 'Not Connected') + '</span>' +
+          '<span class="provider-card-status ' + (connected ? 'connected' : 'not-connected') + '">' +
+          (connected ? 'Connected' : 'Not Connected') + '</span>' +
           '</div>' +
           '<div class="provider-card-env">' + provider.envVar + '</div>';
         providerCardsEl.appendChild(card);
-        if (provider.connected) connectedCount++;
       });
 
       // Update header to show connected count
@@ -239,26 +328,76 @@
         headerLabel.innerHTML = 'Connected Providers <span class="muted" style="font-weight:400">' +
           connectedCount + ' of ' + providers.length + ' connected</span>';
       }
+
+      // Show/hide warning
+      noAccountsWarning.style.display = (connectedCount === 0) ? 'block' : 'none';
     }
 
-    function updateProviderInfo(provider) {
-      if (!provider) {
-        providerInfoEl.innerHTML = '';
-        return;
-      }
-      var hasKey = provider.hasApiKey;
-      var icon = hasKey ? '<span class="check">&#x2713;</span>' : '<span class="cross">&#x2717;</span>';
-      providerInfoEl.innerHTML = icon + ' API Key (' + provider.envVar + '): ' + (hasKey ? 'Found in environment' : 'Not set - add to .env file');
+    function populateAccounts() {
+      accountSelect.innerHTML = '<option value="">-- Select an account --</option>';
+
+      // Group accounts by provider for display
+      var byProvider = {};
+      accounts.forEach(function(acc) {
+        if (!byProvider[acc.provider]) {
+          byProvider[acc.provider] = [];
+        }
+        byProvider[acc.provider].push(acc);
+      });
+
+      // Create options grouped by provider
+      Object.keys(byProvider).forEach(function(provId) {
+        var provider = providers.find(function(p) { return p.id === provId; });
+        var providerName = provider ? provider.name : provId;
+
+        byProvider[provId].forEach(function(acc) {
+          var opt = document.createElement('option');
+          opt.value = acc.accountName + '|' + acc.provider;
+          opt.textContent = acc.accountName + ' (' + providerName + ')';
+          accountSelect.appendChild(opt);
+        });
+      });
+
+      // Also add providers with env var keys
+      providers.forEach(function(provider) {
+        if (provider.hasApiKey && !byProvider[provider.id]) {
+          var opt = document.createElement('option');
+          opt.value = '|' + provider.id;  // Empty account name, just provider
+          opt.textContent = provider.name + ' (env: ' + provider.envVar + ')';
+          accountSelect.appendChild(opt);
+        }
+      });
     }
 
     function populateProviders() {
       providerSelect.innerHTML = '<option value="">-- Select a provider --</option>';
+
+      // Get selected account
+      var selectedValue = accountSelect.value;
+      var parts = selectedValue.split('|');
+      var selectedProvider = parts[1] || '';
+
+      // Filter providers based on selected account
       providers.forEach(function(provider) {
+        // If an account is selected, only show that provider
+        if (selectedProvider && provider.id !== selectedProvider) {
+          return;
+        }
+        // Only show providers that are connected
+        if (!provider.hasApiKey && !accounts.some(function(a) { return a.provider === provider.id; })) {
+          return;
+        }
+
         var opt = document.createElement('option');
         opt.value = provider.id;
-        opt.textContent = provider.name + (provider.hasApiKey ? ' \u2713' : '');
+        opt.textContent = provider.name;
         providerSelect.appendChild(opt);
       });
+
+      // Auto-select if only one option
+      if (providerSelect.options.length === 2) {
+        providerSelect.selectedIndex = 1;
+      }
     }
 
     function getFilteredModels(query) {
@@ -362,15 +501,19 @@
       var preset = presets.find(function(p) { return p.id === presetId; });
       if (!preset) return;
 
+      // Set account if available
+      if (preset.account && preset.provider) {
+        accountSelect.value = preset.account + '|' + preset.provider;
+      } else if (preset.provider) {
+        accountSelect.value = '|' + preset.provider;
+      }
+
+      // Trigger account change to filter providers
+      populateProviders();
+
       providerSelect.value = preset.provider || '';
       modelSelect.value = preset.model || '';
-      emulatedModelNameInput.value = preset.emulatedModelName || '';
-      apiKeyEnvInput.value = preset.apiKeyEnvVar || '';
-
-      var provider = providers.find(function(p) { return p.id === preset.provider; });
-      if (provider) {
-        updateProviderInfo(provider);
-      }
+      setEmulatedModelName(preset.emulatedModelName || '');
 
       modelDropdown.refreshOptions();
       presetActionBtn.textContent = 'Edit';
@@ -386,11 +529,17 @@
     }
 
     function saveConfig() {
+      var accountValue = accountSelect.value;
+      var parts = accountValue.split('|');
+      var accountName = parts[0] || '';
+      var providerId = parts[1] || providerSelect.value;
+
       var body = {
-        provider: providerSelect.value,
+        account: accountName,
+        provider: providerId,
         model: modelSelect.value,
-        emulatedModelName: emulatedModelNameInput.value,
-        apiKeyEnvVar: apiKeyEnvInput.value
+        emulatedModelName: getEmulatedModelName(),
+        apiKeyEnvVar: ''  // Will be resolved by get_api_key
       };
       return fetch('/config/save', {
         method: 'POST',
@@ -400,9 +549,12 @@
     }
 
     function handleStartStop() {
+      var accountValue = accountSelect.value;
+      var parts = accountValue.split('|');
+      var accountName = parts[0] || '';
       var provider = providerSelect.value;
       var model = modelSelect.value;
-      var emulatedModelName = emulatedModelNameInput.value;
+      var emulatedModelName = getEmulatedModelName();
 
       if (!provider) {
         setMessage('Select a provider first.');
@@ -439,10 +591,11 @@
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
+                account: accountName,
                 provider: provider,
                 model: model,
                 emulatedModelName: emulatedModelName,
-                apiKeyEnvVar: apiKeyEnvInput.value
+                apiKeyEnvVar: ''
               })
             });
           })
@@ -540,13 +693,18 @@
       var name = prompt(existingId ? 'Rename preset' : 'Preset name');
       if (!name) return;
 
+      var accountValue = accountSelect.value;
+      var parts = accountValue.split('|');
+      var accountName = parts[0] || '';
+
       var body = {
         id: existingId || undefined,
         name: name.trim(),
+        account: accountName,
         provider: providerSelect.value,
         model: modelSelect.value,
-        emulatedModelName: emulatedModelNameInput.value,
-        apiKeyEnvVar: apiKeyEnvInput.value
+        emulatedModelName: getEmulatedModelName(),
+        apiKeyEnvVar: ''
       };
 
       fetch('/config/savePreset', {
@@ -581,29 +739,32 @@
           presets = state.presets || [];
           providers = state.providers || [];
           models = state.models || [];
+          accounts = state.accounts || [];
 
+          populateAccounts();
           populateProviders();
           populateProviderCards();
           populatePresets();
 
           if (state.config) {
+            // Set account selection
+            if (state.config.account && state.config.provider) {
+              accountSelect.value = state.config.account + '|' + state.config.provider;
+            } else if (state.config.provider) {
+              // Try to find matching env-based option
+              accountSelect.value = '|' + state.config.provider;
+            }
+
+            // Update provider dropdown based on account
+            populateProviders();
+
             providerSelect.value = state.config.provider || '';
             modelSelect.value = state.config.model || '';
-            emulatedModelNameInput.value = state.config.emulatedModelName || '';
-            apiKeyEnvInput.value = state.config.apiKeyEnvVar || '';
-
-            var provider = providers.find(function(p) { return p.id === state.config.provider; });
-            if (provider) {
-              updateProviderInfo(provider);
-            }
+            setEmulatedModelName(state.config.emulatedModelName || '');
           }
 
           modelDropdown.refreshOptions();
           setEmulatorIndicator(state.emulatorActive);
-
-          if (state.endpoint) {
-            endpointDisplay.textContent = 'Endpoint: ' + state.endpoint;
-          }
 
           var currentProvider = providers.find(function(p) { return p.id === providerSelect.value; });
           setProviderIndicator(state.providerOnline !== false, currentProvider ? currentProvider.name : 'Provider');
@@ -632,14 +793,23 @@
       }
     });
 
-    providerSelect.addEventListener('change', function() {
-      var provider = providers.find(function(p) { return p.id === providerSelect.value; });
-      updateProviderInfo(provider);
+    accountSelect.addEventListener('change', function() {
+      // When account changes, update provider dropdown
+      populateProviders();
 
-      if (provider) {
-        apiKeyEnvInput.value = provider.envVar;
+      // Auto-select the provider from the account
+      var parts = accountSelect.value.split('|');
+      var provId = parts[1];
+      if (provId) {
+        providerSelect.value = provId;
       }
 
+      // Clear model selection
+      modelSelect.value = '';
+      modelDropdown.refreshOptions();
+    });
+
+    providerSelect.addEventListener('change', function() {
       modelSelect.value = '';
       modelDropdown.refreshOptions();
     });

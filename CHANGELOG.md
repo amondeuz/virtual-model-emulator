@@ -1,5 +1,43 @@
 # Changelog
 
+## [2.0.0-beta.3] - 2025-12-19
+
+### Added
+- **Connect tab** in Pinokio interface - separate HTML page (`public/connect.html`) for account management
+- **Account-based credential system** - Users can save multiple accounts per provider
+  - Example: "Personal (Anthropic)", "Work (OpenAI)", "Gmail (Google)"
+  - Accounts stored locally in `config/accounts.json`
+- **Emulated model name dropdown** with 18 popular models + custom option
+  - Popular models: gpt-4, gpt-4-turbo, gpt-3.5-turbo, claude-3-opus, claude-3-sonnet, claude-3-haiku, llama3-70b, llama3-8b, llama3.1-405b, mistral-large, mistral-medium, mixtral-8x7b, gemini-pro, gemini-1.5-pro, command-r-plus, command-r, deepseek-coder, qwen-72b
+  - Custom option allows entering any model name
+- `/providers/accounts` endpoint - List all saved accounts (without exposing API keys)
+- `/providers/connect` endpoint - Save API key with account name
+- `/providers/disconnect` endpoint - Remove specific account
+- `/providers/models` endpoint - Get models for specific account/provider
+- Third menu button in Pinokio interface: Connect | Emulator | Update
+- **Four-step configuration UI** with numbered steps:
+  1. Account - Which credential to use
+  2. Provider - The actual AI provider
+  3. Real Model - The actual model to use
+  4. Emulated Model Name - What Pinokio apps will request
+
+### Changed
+- Configuration UI restructured with proper hierarchy (Account first, then Provider, Model, Emulated Name)
+- Account dropdown shows all saved accounts with provider labels
+- Provider dropdown filtered by selected account
+- Emulated name changed from free text input to dropdown with popular options + custom
+- `get_api_key()` now supports priority order: account key > env var > any saved account
+- `chat()` function accepts `account` parameter for credential lookup
+- Removed endpoint display from UI (localhost:11434 not shown to user)
+- `/config/state` now includes `accounts` list
+- `/emulator/status` now includes `account` field in currentConfig
+
+### Fixed
+- **Architecture corrected**: Now properly emulates model names with account-based credentials
+  - Previous beta.2 used environment variables only for API keys
+  - Beta.3 allows UI-based credential management via Connect tab
+- Dynamic provider detection now checks both saved accounts AND environment variables
+
 ## [2.0.0-beta.2] - 2025-12-19
 
 ### Fixed

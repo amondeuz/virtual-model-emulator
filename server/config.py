@@ -15,6 +15,7 @@ CONFIG_DIR = Path(__file__).parent.parent / "config"
 CONFIG_PATH = CONFIG_DIR / "default.json"
 MODELS_CACHE_PATH = CONFIG_DIR / "models-cache.json"
 SAVED_CONFIGS_PATH = CONFIG_DIR / "saved-configs.json"
+ACCOUNTS_PATH = CONFIG_DIR / "accounts.json"
 
 # Ensure config directory exists
 CONFIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -23,6 +24,7 @@ CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 _cached_config: Optional[Dict[str, Any]] = None
 _cached_models: Optional[Dict[str, Any]] = None
 _cached_saved_configs: Optional[List[Dict[str, Any]]] = None
+_cached_accounts: Optional[List[Dict[str, Any]]] = None
 _config_mtime: Optional[float] = None
 _emulator_active: bool = False
 
@@ -39,6 +41,7 @@ def get_default_config() -> Dict[str, Any]:
     """Return default configuration."""
     return {
         "port": 11434,
+        "account": "",  # Account name (e.g., "Personal", "Work")
         "provider": "openai",
         "model": "gpt-4",
         "emulatedModelName": "",  # What Pinokio apps will request (e.g., "llama3", "gpt-4")
@@ -93,7 +96,7 @@ def is_emulator_active() -> bool:
 
 
 def start_emulator(provider: str, model: str, api_key_env_var: str,
-                   emulated_model_name: str = "") -> bool:
+                   emulated_model_name: str = "", account: str = "") -> bool:
     """
     Start the emulator with the given configuration.
 
@@ -102,16 +105,19 @@ def start_emulator(provider: str, model: str, api_key_env_var: str,
         model: The actual model to use (e.g., "claude-3-5-sonnet-20241022")
         api_key_env_var: Environment variable name for the API key
         emulated_model_name: The model name that Pinokio apps will request (e.g., "llama3")
+        account: The account name to use for credentials (e.g., "Personal")
     """
     global _emulator_active
 
     success = update_config({
+        "account": account,
         "provider": provider,
         "model": model,
         "emulatedModelName": emulated_model_name,
         "apiKeyEnvVar": api_key_env_var,
         "emulatorActive": True,
         "lastConfig": {
+            "account": account,
             "provider": provider,
             "model": model,
             "emulatedModelName": emulated_model_name,
@@ -267,6 +273,132 @@ def get_saved_config_by_id(config_id: str) -> Optional[Dict[str, Any]]:
 def get_last_config() -> Optional[Dict[str, Any]]:
     """Get the last used configuration."""
     return get_config().get("lastConfig")
+
+
+# =============================================================================
+# Account Management
+# =============================================================================
+
+def get_accounts() -> List[Dict[str, Any]]:
+    """
+    Get all saved accounts (provider credentials).
+
+    Returns list of accounts with structure:
+    {
+        "accountName": "Personal",
+        "provider": "anthropic",
+        "apiKey": "sk-ant-...",
+        "createdAt": "2025-12-19T..."
+    }
+    """
+    global _cached_accounts
+
+    if _cached_accounts is not None:
+        return _cached_accounts
+
+    try:
+        if ACCOUNTS_PATH.exists():
+            with open(ACCOUNTS_PATH, "r", encoding="utf-8") as f:
+                accounts = json.load(f)
+            if isinstance(accounts, list):
+                _cached_accounts = accounts
+                return accounts
+    except (json.JSONDecodeError, Exception):
+        pass
+
+    return []
+
+
+def save_accounts(accounts: List[Dict[str, Any]]) -> bool:
+    """Save accounts to file."""
+    global _cached_accounts
+
+    try:
+        with open(ACCOUNTS_PATH, "w", encoding="utf-8") as f:
+            json.dump(accounts, f, indent=2)
+        _cached_accounts = accounts
+        return True
+    except Exception:
+        return False
+
+
+def add_account(provider: str, account_name: str, api_key: str) -> Optional[Dict[str, Any]]:
+    """
+    Add a new provider account.
+
+    Args:
+        provider: Provider ID (e.g., "anthropic", "openai")
+        account_name: User-friendly name (e.g., "Personal", "Work")
+        api_key: The API key for this account
+
+    Returns:
+        The created account dict, or None on failure
+    """
+    accounts = get_accounts()
+
+    # Check for duplicate (same provider + account name)
+    for acc in accounts:
+        if acc.get("provider") == provider and acc.get("accountName") == account_name:
+            return None  # Duplicate exists
+
+    new_account = {
+        "accountName": account_name,
+        "provider": provider,
+        "apiKey": api_key,
+        "createdAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    }
+
+    accounts.append(new_account)
+
+    if save_accounts(accounts):
+        return new_account
+    return None
+
+
+def remove_account(provider: str, account_name: str) -> bool:
+    """
+    Remove a provider account.
+
+    Args:
+        provider: Provider ID
+        account_name: Account name to remove
+
+    Returns:
+        True if removed, False if not found or error
+    """
+    accounts = get_accounts()
+    original_len = len(accounts)
+
+    accounts = [
+        acc for acc in accounts
+        if not (acc.get("provider") == provider and acc.get("accountName") == account_name)
+    ]
+
+    if len(accounts) == original_len:
+        return False  # Nothing was removed
+
+    return save_accounts(accounts)
+
+
+def get_account(provider: str, account_name: str) -> Optional[Dict[str, Any]]:
+    """Get a specific account by provider and name."""
+    accounts = get_accounts()
+    for acc in accounts:
+        if acc.get("provider") == provider and acc.get("accountName") == account_name:
+            return acc
+    return None
+
+
+def get_accounts_for_provider(provider: str) -> List[Dict[str, Any]]:
+    """Get all accounts for a specific provider."""
+    accounts = get_accounts()
+    return [acc for acc in accounts if acc.get("provider") == provider]
+
+
+def get_account_api_key(provider: str, account_name: str) -> Optional[str]:
+    """Get the API key for a specific account."""
+    account = get_account(provider, account_name)
+    return account.get("apiKey") if account else None
 
 
 # Initialize emulator state on module load

@@ -1,4 +1,4 @@
-# Virtual Model Emulator
+# Virtual Model Emulator v2.0.0-beta.3
 
 A Pinokio app that provides a local OpenAI-compatible HTTP endpoint with **model name emulation** powered by LiteLLM. Route any model name to any provider - make Pinokio apps think they're talking to one model while actually using another.
 
@@ -11,11 +11,14 @@ A **model name emulator** that translates model names for Pinokio applications. 
 ### Key Features
 
 - **Model Name Emulation**: Apps request "llama3" but get Claude, GPT-4, or any other model
-- **Dynamic Provider Detection**: Only shows providers with API keys configured
+- **Account-Based Credentials**: Save multiple API keys per provider (e.g., "Personal", "Work")
+- **Connect Tab**: Dedicated page for managing provider accounts and API keys
+- **4-Step Configuration**: Account → Provider → Model → Emulated Name
+- **Emulated Model Dropdown**: 18 popular models + custom option
+- **Dynamic Provider Detection**: Shows providers with saved accounts OR environment keys
 - **OpenAI-Compatible Endpoint**: POST to `/v1/chat/completions` just like OpenAI
 - **100+ Providers**: Access OpenAI, Anthropic, Groq, Mistral, Google Gemini, Cohere, Together AI, and more
-- **Connect Tab**: Visual overview of all providers and their connection status
-- **Searchable Dropdowns**: Quick search-as-you-type for providers and models
+- **Searchable Model Dropdown**: Quick search-as-you-type for models
 - **Preset Configurations**: Save and load your favorite configurations
 - **Auto-Start Workflow**: Pinokio automatically installs dependencies and starts the server
 - **Separate Status Indicators**: Clear distinction between provider connectivity and emulator state
@@ -48,9 +51,27 @@ Server starts on `http://localhost:11434` by default.
 
 ## Configuration
 
-### API Keys
+### API Keys (Two Methods)
 
-Create a `.env` file in the project root with your API keys:
+#### Method 1: Connect Tab (Recommended)
+
+The **Connect** tab provides a UI for managing provider accounts:
+
+1. Open Pinokio and navigate to Virtual Model Emulator
+2. Click the **Connect** tab
+3. Click **Connect** on your preferred provider
+4. Enter an **Account Name** (e.g., "Personal", "Work")
+5. Paste your **API Key**
+6. Click **Save Account**
+
+Benefits:
+- Manage multiple accounts per provider
+- No need to edit `.env` files
+- Credentials stored securely in `config/accounts.json`
+
+#### Method 2: Environment Variables
+
+Alternatively, create a `.env` file in the project root:
 
 ```bash
 # Copy from .env.example
@@ -74,33 +95,42 @@ Supported environment variables:
 - `DEEPSEEK_API_KEY` - DeepSeek
 - `CEREBRAS_API_KEY` - Cerebras
 
-**Note**: Only providers with API keys configured will be shown in the UI.
+**Note**: Providers with saved accounts OR environment keys are shown as connected.
 
-### Configuration UI
+### Pinokio Interface
 
-The configuration UI opens automatically when the app starts, or access it at:
+The app has three tabs in Pinokio:
+- **Connect** - Manage provider accounts and API keys
+- **Emulator** - Main configuration (default)
+- **Update** - Update from GitHub
+
+### Configuration UI (Emulator Tab)
+
+Access the configuration UI at:
 ```
 http://localhost:11434/config.html
 ```
 
-**Features:**
-- **Connected Providers**: Collapsible section showing all providers and their connection status
-- **Real Provider**: Select from connected providers (only those with API keys)
-- **Real Model**: Search/select from available models for the selected provider
-- **Emulated Model Name**: The model name that Pinokio apps will request
-- **API Key Env Var**: Configure which environment variable contains your API key
-- **Presets**: Save configurations for quick switching between setups
+**4-Step Configuration:**
+1. **Account** - Select which credential to use (if multiple per provider)
+2. **Provider** - The actual AI provider (filtered by account)
+3. **Real Model** - The actual model from that provider
+4. **Emulated Model Name** - What Pinokio apps will request (dropdown with 18 popular models + custom)
+
+**Additional Features:**
+- **Connected Providers**: Collapsible section showing provider status
+- **Presets**: Save configurations for quick switching
 - **Test Connection**: Verify your API key works before starting
 - **Status Indicators**: Separate indicators for provider connectivity and emulator state
 
 ### Workflow
 
-1. Check the "Connected Providers" section to see which providers have API keys
-2. Select a provider from the dropdown (only connected providers shown)
-3. Select a model for that provider
-4. **Important**: Enter an "Emulated Model Name" (e.g., `llama3`, `gpt-4`)
-5. Click "Test Connection" to verify the provider works
-6. Click "Start" to activate the emulator
+1. **Connect a provider** (if not already done via Connect tab or .env)
+2. **Select an Account** from the dropdown (Step 1)
+3. **Provider auto-selects** based on account (Step 2)
+4. **Select a model** for that provider (Step 3)
+5. **Choose an Emulated Model Name** from dropdown or enter custom (Step 4)
+6. Click **Start** to activate the emulator
 7. Configure your Pinokio app to use the emulated model name
 8. Requests for the emulated model name will be routed to your real provider
 
@@ -250,22 +280,24 @@ Request Flow:
 ### File Structure
 
 ```
-/model-emulator
+/virtual-model-emulator
 ├── server/
-│   ├── main.py           # FastAPI server with /emulator/status endpoint
-│   ├── config.py         # Configuration with emulatedModelName field
+│   ├── main.py           # FastAPI server with account management endpoints
+│   ├── config.py         # Configuration and account storage
 │   ├── logger.py         # Logging and diagnostics
 │   ├── litellm_client.py # Dynamic provider detection via LiteLLM
 │   └── openai_adapter.py # Model name emulation routing
 ├── config/
-│   ├── default.json      # User configuration (includes emulatedModelName)
+│   ├── default.json      # User configuration (includes account, emulatedModelName)
+│   ├── accounts.json     # Saved provider accounts (API keys)
 │   ├── models-cache.json # Cached model list
 │   └── saved-configs.json # Saved presets
 ├── public/
-│   └── config.html       # Configuration UI with Connect tab
+│   ├── config.html       # Emulator configuration UI (4-step hierarchy)
+│   └── connect.html      # Provider account management UI
 ├── tests/
 │   └── test_adapter.py   # pytest tests
-├── pinokio.js            # Pinokio app definition
+├── pinokio.js            # Pinokio app definition (3 tabs)
 ├── install.json          # Dependency installation
 ├── start.json            # Server startup (daemon)
 ├── requirements.txt      # Python dependencies
@@ -322,6 +354,39 @@ Comprehensive emulator status including:
 ### `GET /providers`
 
 List all providers with their connection status.
+
+### `GET /providers/accounts`
+
+List all saved accounts (API keys stored via Connect tab).
+
+### `POST /providers/connect`
+
+Save an API key for a provider.
+
+**Request:**
+```json
+{
+  "provider": "anthropic",
+  "accountName": "Personal",
+  "apiKey": "sk-ant-..."
+}
+```
+
+### `POST /providers/disconnect`
+
+Remove a saved account.
+
+**Request:**
+```json
+{
+  "provider": "anthropic",
+  "accountName": "Personal"
+}
+```
+
+### `GET /providers/models`
+
+Get models for a specific provider (optionally filtered by account).
 
 ### `GET /models`
 

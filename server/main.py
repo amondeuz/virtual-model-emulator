@@ -21,7 +21,8 @@ import uvicorn
 from .config import (
     get_config, update_config, get_models_cache, is_models_cache_stale, save_models_cache,
     get_saved_configs, add_saved_config, update_saved_config, delete_saved_config,
-    get_saved_config_by_id, is_emulator_active, start_emulator, stop_emulator, get_last_config
+    get_saved_config_by_id, is_emulator_active, start_emulator, stop_emulator, get_last_config,
+    get_accounts, add_account, remove_account, get_account_api_key
 )
 from .openai_adapter import handle_chat_completion
 from .logger import log_info, log_error, get_health_info, set_config_getter
@@ -108,6 +109,17 @@ async def build_state_payload(force_models: bool = False) -> Dict[str, Any]:
     current_provider = config.get("provider", "openai")
     provider_online = is_provider_online(current_provider)
 
+    # Get accounts (without exposing API keys)
+    accounts = get_accounts()
+    safe_accounts = [
+        {
+            "accountName": acc.get("accountName", ""),
+            "provider": acc.get("provider", ""),
+            "createdAt": acc.get("createdAt", "")
+        }
+        for acc in accounts
+    ]
+
     return {
         "endpoint": build_endpoint(),
         "config": config,
@@ -115,6 +127,7 @@ async def build_state_payload(force_models: bool = False) -> Dict[str, Any]:
         "models": models_data["models"],
         "modelsLastUpdated": models_data.get("lastUpdated"),
         "providers": providers,
+        "accounts": safe_accounts,
         "emulatorActive": is_emulator_active(),
         "providerOnline": provider_online,
         "lastConfig": get_last_config(),
@@ -153,7 +166,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Virtual Model Emulator",
     description="OpenAI-compatible endpoint with model name emulation backed by LiteLLM",
-    version="2.0.0-beta.2",
+    version="2.0.0-beta.3",
     lifespan=lifespan
 )
 
@@ -212,6 +225,8 @@ async def config_save(request: Request):
     body = await request.json()
     updates = {}
 
+    if "account" in body:
+        updates["account"] = body["account"]
     if "provider" in body:
         updates["provider"] = body["provider"]
     if "model" in body:
@@ -300,6 +315,158 @@ async def get_providers():
     return JSONResponse(content={"providers": providers})
 
 
+# =============================================================================
+# Provider Account Management Endpoints
+# =============================================================================
+
+@app.get("/providers/accounts")
+async def get_provider_accounts():
+    """
+    List all saved accounts with their providers.
+
+    Returns list of accounts (without exposing full API keys):
+    [
+        {"accountName": "Personal", "provider": "anthropic", "createdAt": "..."},
+        {"accountName": "Work", "provider": "openai", "createdAt": "..."}
+    ]
+    """
+    accounts = get_accounts()
+    # Return accounts without exposing full API keys
+    safe_accounts = [
+        {
+            "accountName": acc.get("accountName", ""),
+            "provider": acc.get("provider", ""),
+            "createdAt": acc.get("createdAt", ""),
+            "hasApiKey": bool(acc.get("apiKey"))
+        }
+        for acc in accounts
+    ]
+    return JSONResponse(content=safe_accounts)
+
+
+@app.post("/providers/connect")
+async def connect_provider(request: Request):
+    """
+    Save API key with account name for a provider.
+
+    Body:
+        provider: Provider ID (e.g., "anthropic")
+        accountName: User-friendly name (e.g., "Personal", "Work")
+        apiKey: The API key
+    """
+    body = await request.json()
+
+    provider = body.get("provider", "").strip()
+    account_name = body.get("accountName", "").strip()
+    api_key = body.get("apiKey", "").strip()
+
+    if not provider:
+        return JSONResponse(
+            status_code=400,
+            content={"success": False, "error": "Provider is required"}
+        )
+
+    if not account_name:
+        return JSONResponse(
+            status_code=400,
+            content={"success": False, "error": "Account name is required"}
+        )
+
+    if not api_key:
+        return JSONResponse(
+            status_code=400,
+            content={"success": False, "error": "API key is required"}
+        )
+
+    # Validate provider exists in registry
+    if provider not in PROVIDER_REGISTRY:
+        return JSONResponse(
+            status_code=400,
+            content={"success": False, "error": f"Unknown provider: {provider}"}
+        )
+
+    # Add the account
+    account = add_account(provider, account_name, api_key)
+    if account:
+        return JSONResponse(content={
+            "success": True,
+            "account": {
+                "accountName": account["accountName"],
+                "provider": account["provider"],
+                "createdAt": account["createdAt"]
+            }
+        })
+    else:
+        return JSONResponse(
+            status_code=409,
+            content={"success": False, "error": f"Account '{account_name}' already exists for {provider}"}
+        )
+
+
+@app.post("/providers/disconnect")
+async def disconnect_provider(request: Request):
+    """
+    Remove a specific account.
+
+    Body:
+        provider: Provider ID
+        accountName: Account name to remove
+    """
+    body = await request.json()
+
+    provider = body.get("provider", "").strip()
+    account_name = body.get("accountName", "").strip()
+
+    if not provider:
+        return JSONResponse(
+            status_code=400,
+            content={"success": False, "error": "Provider is required"}
+        )
+
+    if not account_name:
+        return JSONResponse(
+            status_code=400,
+            content={"success": False, "error": "Account name is required"}
+        )
+
+    if remove_account(provider, account_name):
+        return JSONResponse(content={"success": True})
+    else:
+        return JSONResponse(
+            status_code=404,
+            content={"success": False, "error": "Account not found"}
+        )
+
+
+@app.get("/providers/models")
+async def get_provider_models(
+    account: Optional[str] = Query(None),
+    provider: Optional[str] = Query(None)
+):
+    """
+    Get models for specific account/provider.
+
+    Query params:
+        account: Optional account name
+        provider: Optional provider ID
+
+    If account is provided, fetches models for that account's provider.
+    If provider is provided, fetches models for that provider.
+    """
+    # If account is specified, find its provider
+    if account and provider:
+        # Verify the account exists for this provider
+        api_key = get_account_api_key(provider, account)
+        if not api_key:
+            return JSONResponse(
+                status_code=404,
+                content={"error": f"Account '{account}' not found for provider '{provider}'"}
+            )
+
+    models = list_models(provider)
+    return JSONResponse(content={"models": models})
+
+
 # Models cache
 @app.get("/models")
 async def get_models_endpoint(force: bool = Query(False), provider: Optional[str] = Query(None)):
@@ -315,6 +482,7 @@ async def emulator_start(request: Request):
     Start the emulator with specified configuration.
 
     Body parameters:
+        account: The account name to use for credentials (e.g., "Personal")
         provider: The actual provider to use (e.g., "anthropic")
         model: The actual model to use (e.g., "claude-3-5-sonnet-20241022")
         apiKeyEnvVar: Environment variable name for the API key
@@ -322,6 +490,7 @@ async def emulator_start(request: Request):
     """
     body = await request.json()
 
+    account = body.get("account", "")
     provider = body.get("provider")
     model = body.get("model")
     api_key_env_var = body.get("apiKeyEnvVar", "")
@@ -356,12 +525,14 @@ async def emulator_start(request: Request):
             content={"success": False, "error": f'Model "{model}" not found for provider'}
         )
 
-    if start_emulator(provider, model, api_key_env_var, emulated_model_name):
+    if start_emulator(provider, model, api_key_env_var, emulated_model_name, account):
         emulated_info = f" (emulating '{emulated_model_name}')" if emulated_model_name else ""
-        log_info(f"Emulator started: {provider}/{model}{emulated_info}")
+        account_info = f" using account '{account}'" if account else ""
+        log_info(f"Emulator started: {provider}/{model}{emulated_info}{account_info}")
         return JSONResponse(content={
             "success": True,
             "config": {
+                "account": account,
                 "provider": provider,
                 "model": model,
                 "emulatedModelName": emulated_model_name,
@@ -396,7 +567,7 @@ async def emulator_status():
     This endpoint provides information about:
     - Whether the emulator is actively routing requests
     - Whether the configured provider is online
-    - The current configuration including emulated model name
+    - The current configuration including account and emulated model name
 
     Different from /health which only checks provider connectivity.
     """
@@ -412,6 +583,7 @@ async def emulator_status():
         "providerOnline": provider_online,
         "providerConfigured": is_provider_configured(provider),
         "currentConfig": {
+            "account": config.get("account", ""),
             "provider": provider,
             "providerName": provider_name,
             "model": config.get("model", ""),
