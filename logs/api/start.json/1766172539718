@@ -1,0 +1,15 @@
+[api shell.run]
+Microsoft Windows [Version 10.0.26200.7462]
+(c) Microsoft Corporation. All rights reserved.
+
+C:\Pinokio\api\virtual-model-emulator.git>conda_hook & conda deactivate & conda deactivate & conda deactivate & conda activate base & python -m venv C:\Pinokio\api\virtual-model-emulator.git\env & C:\Pinokio\api\virtual-model-emulator.git\env\Scripts\activate C:\Pinokio\api\virtual-model-emulator.git\env & C:\Pinokio\api\virtual-model-emulator.git\env\Scripts\deactivate & C:\Pinokio\api\virtual-model-emulator.git\env\Scripts\activate C:\Pinokio\api\virtual-model-emulator.git\env && python -m server.main
+Traceback (most recent call last):
+  File "C:\Pinokio\bin\miniconda\lib\runpy.py", line 196, in _run_module_as_main
+    return _run_code(code, main_globals, None,
+  File "C:\Pinokio\bin\miniconda\lib\runpy.py", line 86, in _run_code
+    exec(code, run_globals)
+  File "C:\Pinokio\api\virtual-model-emulator.git\server\main.py", line 15, in <module>
+    from dotenv import load_dotenv
+ModuleNotFoundError: No module named 'dotenv'
+
+(env) (base) C:\Pinokio\api\virtual-model-emulator.git>

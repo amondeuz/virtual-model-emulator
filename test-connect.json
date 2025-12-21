@@ -1,0 +1,5 @@
+{
+  "provider": "anthropic",
+  "accountName": "Test Account",
+  "apiKey": "test-key-12345"
+}

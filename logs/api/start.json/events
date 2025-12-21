@@ -1,0 +1,105 @@
+2025-12-20T04:25:04.366Z [memory] {"ts":1766204704281,"step":0,"input":{},"args":{},"global":{},"local":{},"port":42003}
+2025-12-20T04:25:04.366Z [memory] 
+2025-12-20T04:25:04.366Z [memory] {"ts":1766204704281,"step":0,"input":{},"args":{},"global":{},"local":{},"port":42003}
+2025-12-20T04:25:04.366Z [memory] 
+2025-12-20T04:25:04.367Z [api log] Starting Virtual Model Emulator...
+2025-12-20T04:25:04.367Z [api log] 
+2025-12-20T04:25:04.367Z [api log] 
+2025-12-20T04:25:05.612Z [memory] {"ts":1766204705611,"step":1,"args":{},"global":{},"local":{},"port":42003}
+2025-12-20T04:25:05.612Z [memory] 
+2025-12-20T06:55:36.437Z [memory] {"ts":1766213736436,"step":0,"input":{},"args":{},"global":{},"local":{},"port":42003}
+2025-12-20T06:55:36.437Z [memory] 
+2025-12-20T06:55:36.437Z [memory] {"ts":1766213736436,"step":0,"input":{},"args":{},"global":{},"local":{},"port":42003}
+2025-12-20T06:55:36.437Z [memory] 
+2025-12-20T06:55:36.529Z [api log] Starting Virtual Model Emulator...
+2025-12-20T06:55:36.529Z [api log] 
+2025-12-20T06:55:36.529Z [api log] 
+2025-12-20T06:55:37.756Z [memory] {"ts":1766213737755,"step":1,"args":{},"global":{},"local":{},"port":42003}
+2025-12-20T06:55:37.756Z [memory] 
+2025-12-20T07:05:51.904Z [memory] {"ts":1766214351903,"step":0,"input":{},"args":{},"global":{},"local":{},"port":42003}
+2025-12-20T07:05:51.904Z [memory] 
+2025-12-20T07:05:51.904Z [memory] {"ts":1766214351903,"step":0,"input":{},"args":{},"global":{},"local":{},"port":42003}
+2025-12-20T07:05:51.904Z [memory] 
+2025-12-20T07:05:51.990Z [api log] Starting Virtual Model Emulator...
+2025-12-20T07:05:51.990Z [api log] 
+2025-12-20T07:05:51.990Z [api log] 
+2025-12-20T07:05:53.265Z [memory] {"ts":1766214353264,"step":1,"args":{},"global":{},"local":{},"port":42003}
+2025-12-20T07:05:53.265Z [memory] 
+2025-12-20T07:06:01.636Z [memory] {"ts":1766214361635,"step":2,"input":{"id":"f852c993-39ac-4882-a154-f9b514cb2eed","event":["http://localhost:11434/config.html","http://localhost:11434/config.html"]},"args":{},"global":{},"local":{},"port":42003}
+2025-12-20T07:06:01.636Z [memory] 
+2025-12-20T07:06:01.648Z [api local.set] 
+2025-12-20T07:06:01.648Z [api local.set] 
+2025-12-20T07:06:01.648Z [api local.set] ===================================================
+2025-12-20T07:06:01.648Z [api local.set] 
+2025-12-20T07:06:01.649Z [api local.set] # local variables
+2025-12-20T07:06:01.649Z [api local.set] 
+2025-12-20T07:06:01.649Z [api local.set] {
+2025-12-20T07:06:01.649Z [api local.set]   "url": "http://localhost:11434/config.html"
+2025-12-20T07:06:01.649Z [api local.set] }
+2025-12-20T07:06:01.649Z [api local.set] 
+2025-12-20T07:06:01.649Z [api local.set] ===================================================
+2025-12-20T07:06:01.649Z [api local.set] 
+2025-12-20T07:06:01.649Z [api local.set] 
+2025-12-20T07:06:03.011Z [memory] {"ts":1766214363011,"step":3,"args":{},"global":{},"local":{"url":"http://localhost:11434/config.html"},"port":42003}
+2025-12-20T07:06:03.011Z [memory] 
+2025-12-20T07:06:03.017Z [api log] UI ready at {{input.event[1]}}
+2025-12-20T07:06:03.017Z [api log] 
+2025-12-20T07:06:03.017Z [api log] 
+2025-12-20T07:12:34.068Z [memory] {"ts":1766214754067,"step":0,"input":{},"args":{},"global":{},"local":{},"port":42003}
+2025-12-20T07:12:34.068Z [memory] 
+2025-12-20T07:12:34.068Z [memory] {"ts":1766214754067,"step":0,"input":{},"args":{},"global":{},"local":{},"port":42003}
+2025-12-20T07:12:34.068Z [memory] 
+2025-12-20T07:12:34.163Z [api log] 
+2025-12-20T07:12:34.163Z [api log] 
+2025-12-20T07:12:34.163Z [api log] Starting Virtual Model Emulator...
+2025-12-20T07:12:35.364Z [memory] {"ts":1766214755364,"step":1,"args":{},"global":{},"local":{},"port":42003}
+2025-12-20T07:12:35.364Z [memory] 
+2025-12-20T07:12:42.914Z [memory] {"ts":1766214762913,"step":2,"input":{"id":"db2f6b2a-fd2a-4697-98f1-0761e1850eb7","event":["http://localhost:11434/config.html","http://localhost:11434/config.html"]},"args":{},"global":{},"local":{},"port":42003}
+2025-12-20T07:12:42.914Z [memory] 
+2025-12-20T07:12:42.987Z [api local.set] # local variables
+2025-12-20T07:12:42.987Z [api local.set] 
+2025-12-20T07:12:42.987Z [api local.set] 
+2025-12-20T07:12:42.987Z [api local.set] 
+2025-12-20T07:12:42.987Z [api local.set] ===================================================
+2025-12-20T07:12:42.987Z [api local.set] 
+2025-12-20T07:12:42.988Z [api local.set] 
+2025-12-20T07:12:42.988Z [api local.set] ===================================================
+2025-12-20T07:12:42.988Z [api local.set] 
+2025-12-20T07:12:42.988Z [api local.set] 
+2025-12-20T07:12:42.988Z [api local.set] {
+2025-12-20T07:12:42.988Z [api local.set]   "url": "http://localhost:11434/config.html"
+2025-12-20T07:12:42.988Z [api local.set] }
+2025-12-20T07:12:44.215Z [memory] {"ts":1766214764214,"step":3,"args":{},"global":{},"local":{"url":"http://localhost:11434/config.html"},"port":42003}
+2025-12-20T07:12:44.215Z [memory] 
+2025-12-20T07:12:44.218Z [api log] 
+2025-12-20T07:12:44.218Z [api log] 
+2025-12-20T07:12:44.219Z [api log] UI ready at {{input.event[1]}}
+2025-12-20T17:18:15.722Z [memory] {"ts":1766251095721,"step":0,"input":{},"args":{},"global":{},"local":{},"port":42003}
+2025-12-20T17:18:15.722Z [memory] 
+2025-12-20T17:18:15.722Z [memory] {"ts":1766251095721,"step":0,"input":{},"args":{},"global":{},"local":{},"port":42003}
+2025-12-20T17:18:15.722Z [memory] 
+2025-12-20T17:18:15.836Z [api log] Starting Virtual Model Emulator...
+2025-12-20T17:18:15.836Z [api log] 
+2025-12-20T17:18:15.836Z [api log] 
+2025-12-20T17:18:17.021Z [memory] {"ts":1766251097020,"step":1,"args":{},"global":{},"local":{},"port":42003}
+2025-12-20T17:18:17.021Z [memory] 
+2025-12-20T17:18:24.888Z [memory] {"ts":1766251104887,"step":2,"input":{"id":"f243fd15-9a06-4faf-a8e0-e64600b105b9","event":["http://localhost:11434/config.html","http://localhost:11434/config.html"]},"args":{},"global":{},"local":{},"port":42003}
+2025-12-20T17:18:24.888Z [memory] 
+2025-12-20T17:18:24.947Z [api local.set] 
+2025-12-20T17:18:24.947Z [api local.set] 
+2025-12-20T17:18:24.947Z [api local.set] ===================================================
+2025-12-20T17:18:24.947Z [api local.set] 
+2025-12-20T17:18:24.948Z [api local.set] {
+2025-12-20T17:18:24.948Z [api local.set]   "url": "http://localhost:11434/config.html"
+2025-12-20T17:18:24.948Z [api local.set] }
+2025-12-20T17:18:24.948Z [api local.set] # local variables
+2025-12-20T17:18:24.948Z [api local.set] 
+2025-12-20T17:18:24.948Z [api local.set] 
+2025-12-20T17:18:24.948Z [api local.set] ===================================================
+2025-12-20T17:18:24.948Z [api local.set] 
+2025-12-20T17:18:24.948Z [api local.set] 
+2025-12-20T17:18:26.200Z [memory] {"ts":1766251106199,"step":3,"args":{},"global":{},"local":{"url":"http://localhost:11434/config.html"},"port":42003}
+2025-12-20T17:18:26.200Z [memory] 
+2025-12-20T17:18:26.203Z [api log] UI ready at {{input.event[1]}}
+2025-12-20T17:18:26.204Z [api log] 
+2025-12-20T17:18:26.204Z [api log] 
