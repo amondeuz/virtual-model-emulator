@@ -28,8 +28,8 @@ from .openai_adapter import handle_chat_completion
 from .logger import log_info, log_error, get_health_info, set_config_getter
 from .litellm_client import (
     list_models, list_providers, check_connectivity, is_provider_online,
-    get_available_providers, get_all_providers_with_status, is_provider_configured,
-    PROVIDER_REGISTRY, SUPPORTED_PROVIDERS
+    get_api_key, get_available_providers, get_all_providers_with_status, 
+    is_provider_configured, PROVIDER_REGISTRY, SUPPORTED_PROVIDERS
 )
 
 # Load environment variables from .env file
@@ -73,7 +73,7 @@ async def get_models(provider: Optional[str] = None, force: bool = False) -> Dic
         }
 
     try:
-        models = list_models(provider)
+        models = list_models(provider, only_available=True)
         normalized = [normalize_model(m) for m in models]
         normalized = [m for m in normalized if m is not None]
         save_models_cache(normalized)
@@ -197,7 +197,12 @@ async def health_check():
     try:
         config = get_config()
         provider = config.get("provider", "openai")
-        online = check_connectivity(provider)
+        account_name = config.get("account", "")
+        
+        # Get API key from account or environment
+        api_key = get_api_key(provider, account_name=account_name)
+        online = check_connectivity(provider, api_key=api_key)
+        
         provider_name = PROVIDER_REGISTRY.get(provider, {}).get("name", provider)
         return JSONResponse(content={
             "online": online,
@@ -310,8 +315,8 @@ async def config_save_preset(request: Request):
 # List providers
 @app.get("/providers")
 async def get_providers():
-    """List supported LiteLLM providers."""
-    providers = list_providers()
+    """List supported LiteLLM providers with API key status from accounts and environment."""
+    providers = get_all_providers_with_status()
     return JSONResponse(content={"providers": providers})
 
 
@@ -509,7 +514,7 @@ async def emulator_start(request: Request):
         )
 
     # Check provider connectivity
-    if not check_connectivity(provider):
+    if not check_connectivity(provider, account=account):
         provider_name = PROVIDER_REGISTRY.get(provider, {}).get("name", provider)
         return JSONResponse(
             status_code=503,
@@ -573,7 +578,8 @@ async def emulator_status():
     """
     config = get_config()
     provider = config.get("provider", "openai")
-    provider_online = is_provider_online(provider)
+    account = config.get("account", "")
+    provider_online = check_connectivity(provider, account=account)
 
     # Get provider name for display
     provider_name = PROVIDER_REGISTRY.get(provider, {}).get("name", provider)

@@ -1,14 +1,21 @@
 {
   "port": 11434,
-  "provider": "openai",
-  "model": "gpt-4",
-  "emulatedModelName": "",
-  "apiKeyEnvVar": "OPENAI_API_KEY",
-  "emulatorActive": false,
-  "lastConfig": null,
+  "provider": "openrouter",
+  "model": "openai/gpt-4-turbo",
+  "emulatedModelName": "claude-3-haiku",
+  "apiKeyEnvVar": "",
+  "emulatorActive": true,
+  "lastConfig": {
+    "account": "amondeuz1@gmail.com",
+    "provider": "openrouter",
+    "model": "openai/gpt-4-turbo",
+    "emulatedModelName": "claude-3-haiku",
+    "apiKeyEnvVar": ""
+  },
   "logging": {
     "enabled": true,
     "logRequests": true,
     "logErrors": true
-  }
+  },
+  "account": "amondeuz1@gmail.com"
 }

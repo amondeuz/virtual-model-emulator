@@ -14,6 +14,7 @@ import math
 import os
 from typing import Any, Dict, List, Optional, Tuple
 
+import requests
 import litellm
 from litellm import completion
 
@@ -141,7 +142,8 @@ def get_available_providers() -> List[Dict[str, Any]]:
     """
     available = []
     for provider_id, info in PROVIDER_REGISTRY.items():
-        api_key = os.environ.get(info["envVar"], "")
+        # Check for API key from accounts.json or environment
+        api_key = get_api_key(provider_id)
         if api_key:
             available.append({
                 "id": provider_id,
@@ -161,7 +163,8 @@ def get_all_providers_with_status() -> List[Dict[str, Any]]:
     """
     providers = []
     for provider_id, info in PROVIDER_REGISTRY.items():
-        api_key = os.environ.get(info["envVar"], "")
+        # Check for API key from accounts.json or environment
+        api_key = get_api_key(provider_id)
         has_key = bool(api_key)
         providers.append({
             "id": provider_id,
@@ -259,6 +262,46 @@ def list_providers(only_available: bool = False) -> List[Dict[str, Any]]:
     return providers
 
 
+def fetch_live_models_from_provider(provider: str, api_key: Optional[str] = None) -> List[Dict[str, Any]]:
+    """
+    Fetch live models from provider API.
+    
+    Args:
+        provider: Provider ID (e.g., "groq", "openai")
+        api_key: API key for the provider
+        
+    Returns:
+        List of models with id and label, or empty list if fetch fails
+    """
+    if not api_key:
+        return []
+    
+    try:
+        # Provider-specific endpoints
+        endpoints = {
+            "groq": "https://api.groq.com/openai/v1/models",
+            "openai": "https://api.openai.com/v1/models",
+            "anthropic": None,  # Anthropic doesn't have public models endpoint
+        }
+        
+        endpoint = endpoints.get(provider)
+        if not endpoint:
+            return []
+            
+        headers = {"Authorization": f"Bearer {api_key}"}
+        response = requests.get(endpoint, headers=headers, timeout=5)
+        
+        if response.status_code != 200:
+            return []
+            
+        data = response.json()
+        models = data.get("data", [])
+        
+        return [{"id": m["id"], "label": m.get("name", m["id"])} for m in models]
+    except Exception:
+        return []
+
+
 def list_models(provider: Optional[str] = None, only_available: bool = False) -> List[Dict[str, Any]]:
     """
     List available models, optionally filtered by provider.
@@ -283,6 +326,25 @@ def list_models(provider: Optional[str] = None, only_available: bool = False) ->
             continue
 
         info = PROVIDER_REGISTRY[prov]
+        
+        # Try to fetch live models for certain providers
+        if prov in ["groq", "openai"]:
+            # Get API key from account or environment
+            api_key = get_api_key(prov)
+            live_models = fetch_live_models_from_provider(prov, api_key)
+            
+            if live_models:
+                # Use live models instead of static list
+                for model in live_models:
+                    models.append({
+                        "id": model["id"],
+                        "label": model["label"],
+                        "provider": prov,
+                        "providerName": info["name"]
+                    })
+                continue
+        
+        # Fallback to static models from registry
         for model in info["models"]:
             models.append({
                 "id": model["id"],
@@ -312,6 +374,8 @@ def get_api_key(provider: str, env_var: Optional[str] = None, account_name: Opti
     Returns:
         API key string or None if not found
     """
+    print(f"[DEBUG] get_api_key called: provider={provider}, env_var={env_var}, account_name={account_name}", flush=True)
+    
     # Import here to avoid circular import
     from .config import get_account_api_key, get_accounts_for_provider
 
@@ -334,18 +398,28 @@ def get_api_key(provider: str, env_var: Optional[str] = None, account_name: Opti
             return key
 
     # Priority 4: Any saved account for this provider
+    print(f"[DEBUG] get_api_key trying Priority 4 for provider={provider}", flush=True)
     accounts = get_accounts_for_provider(provider)
+    print(f"[DEBUG] get_api_key Priority 4: get_accounts_for_provider returned {len(accounts)} accounts", flush=True)
     if accounts:
         key = accounts[0].get("apiKey")
+        print(f"[DEBUG] get_api_key Priority 4: key from first account = {key[:20] if key else 'None'}...", flush=True)
         if key:
+            print(f"[DEBUG] get_api_key returning key from Priority 4 (accounts): {key[:20]}...", flush=True)
             return key
 
+    print(f"[DEBUG] get_api_key returning None - no key found for provider {provider}", flush=True)
     return None
 
 
-def check_connectivity(provider: str, api_key: Optional[str] = None) -> bool:
+def check_connectivity(provider: str, api_key: Optional[str] = None, account: Optional[str] = None) -> bool:
     """
     Test if a provider's API key works by making a minimal test call.
+    
+    Args:
+        provider: Provider ID (e.g., "groq", "openai")
+        api_key: Optional explicit API key
+        account: Optional account name to load API key from accounts.json
     """
     global _provider_online
 
@@ -353,7 +427,14 @@ def check_connectivity(provider: str, api_key: Optional[str] = None) -> bool:
         return False
 
     info = PROVIDER_REGISTRY[provider]
-    key = api_key or os.environ.get(info["envVar"])
+    
+    # Priority: explicit api_key > account from accounts.json > environment variable
+    key = api_key
+    if not key and account:
+        from server.config import get_account_api_key
+        key = get_account_api_key(provider, account)
+    if not key:
+        key = os.environ.get(info["envVar"])
 
     if not key:
         _provider_online[provider] = False

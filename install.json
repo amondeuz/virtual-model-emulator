@@ -9,7 +9,7 @@
     {
       "method": "shell.run",
       "params": {
-        "message": "uv pip install -r requirements.txt",
+        "message": "pip install -r requirements.txt",
         "venv": "env",
         "path": "."
       }
