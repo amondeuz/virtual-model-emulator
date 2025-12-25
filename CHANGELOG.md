@@ -1,5 +1,36 @@
 # Changelog
 
+## [2.0.0-beta.4] - 2025-12-25
+
+### Fixed
+- **BREAKING**: Corrected architecture to use LiteLLM proxy server instead of custom routing
+- Removed redundant routing code (litellm_client.py, openai_adapter.py)
+- Simplified backend to config generator + subprocess manager
+
+### Changed
+- LiteLLM now runs as a subprocess managed by FastAPI
+- All routing/provider logic handled by LiteLLM proxy
+- App only generates `config/config.yaml` + manages process lifecycle
+- Connect UI now only shows cards for providers with saved accounts
+- API keys now encrypted with Fernet before storage
+- Environment variable pattern: `{PROVIDER}_{ACCOUNTNAME}` (e.g., `OPENROUTER_PERSONAL`)
+- Add Provider modal with Provider dropdown (searchable), Account Name, API Key fields
+- Provider cards show "Add" button and "Edit" mode with checkboxes for bulk delete
+
+### Removed
+- `server/litellm_client.py` - replaced by LiteLLM proxy
+- `server/openai_adapter.py` - replaced by LiteLLM proxy
+- `server/logger.py` - use LiteLLM's logging
+- Duplicate documentation files: `QWEN.md`, `GEMINI.md`, `AGENTS.md`
+- Unused files: `ENVIRONMENT`, `test-connect.py`, `test-connect.json`, `stop.json`
+- `tests/` directory
+
+### Added
+- `cryptography` dependency for API key encryption
+- `config/.secret` file for encryption key (gitignored)
+- `config/config.yaml` generation for LiteLLM (gitignored)
+- LiteLLM subprocess management in main.py
+
 ## [2.0.0-beta.3] - 2025-12-19
 
 ### Added
