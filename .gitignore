@@ -58,3 +58,7 @@ temp/
 Thumbs.db
 ehthumbs.db
 Desktop.ini
+
+# Config files with secrets
+config/.secret
+config/config.yaml

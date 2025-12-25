@@ -1,6 +1,6 @@
-# Virtual Model Emulator v2.0.0-beta.3
+# Virtual Model Emulator v2.0.0-beta.4
 
-A Pinokio app that provides a local OpenAI-compatible HTTP endpoint with **model name emulation** powered by LiteLLM. Route any model name to any provider - make Pinokio apps think they're talking to one model while actually using another.
+A Pinokio app that provides a local OpenAI-compatible HTTP endpoint with **model name emulation** powered by LiteLLM proxy server. Route any model name to any provider - make Pinokio apps think they're talking to one model while actually using another.
 
 ## What is this?
 
@@ -8,21 +8,47 @@ A **model name emulator** that translates model names for Pinokio applications. 
 
 **Example**: Configure the emulator to respond to `llama3` requests while actually routing them to Anthropic Claude 3.5 Sonnet.
 
+## Architecture
+
+This app uses **LiteLLM as a proxy server** (subprocess) for all model routing:
+
+```
+Request Flow:
+┌─────────────────────┐
+│ Pinokio App         │
+│ requests "llama3"   │
+└──────────┬──────────┘
+           ↓
+┌─────────────────────┐
+│ LiteLLM Proxy       │
+│ (localhost:11434)   │
+│ ┌─────────────────┐ │
+│ │ Reads config.yaml │
+│ │ model_list:     │ │
+│ │  - llama3 →     │ │
+│ │    anthropic/   │ │
+│ │    claude-3     │ │
+│ └────────┬────────┘ │
+│          ↓          │
+│ Routes to Anthropic │
+└──────────┬──────────┘
+           ↓
+┌─────────────────────┐
+│ Response returned   │
+│ as "llama3"         │
+└─────────────────────┘
+```
+
 ### Key Features
 
-- **Model Name Emulation**: Apps request "llama3" but get Claude, GPT-4, or any other model
-- **Account-Based Credentials**: Save multiple API keys per provider (e.g., "Personal", "Work")
-- **Connect Tab**: Dedicated page for managing provider accounts and API keys
+- **LiteLLM Proxy Server**: All routing handled by LiteLLM subprocess
+- **Encrypted API Keys**: Keys encrypted with Fernet before storage
+- **Account-Based Credentials**: Save multiple API keys per provider
+- **Connect Tab**: Dedicated page for managing provider accounts
 - **4-Step Configuration**: Account → Provider → Model → Emulated Name
-- **Emulated Model Dropdown**: 18 popular models + custom option
-- **Dynamic Provider Detection**: Shows providers with saved accounts OR environment keys
-- **OpenAI-Compatible Endpoint**: POST to `/v1/chat/completions` just like OpenAI
-- **100+ Providers**: Access OpenAI, Anthropic, Groq, Mistral, Google Gemini, Cohere, Together AI, and more
-- **Searchable Model Dropdown**: Quick search-as-you-type for models
-- **Preset Configurations**: Save and load your favorite configurations
-- **Auto-Start Workflow**: Pinokio automatically installs dependencies and starts the server
-- **Separate Status Indicators**: Clear distinction between provider connectivity and emulator state
-- **Health Monitoring**: Built-in connectivity and emulator status checking
+- **Dynamic Config Generation**: Generates `config/config.yaml` for LiteLLM
+- **OpenAI-Compatible Endpoint**: LiteLLM serves at `/v1/chat/completions`
+- **100+ Providers**: Access OpenAI, Anthropic, Groq, Mistral, Google Gemini, and more
 
 ## Installation
 
@@ -34,15 +60,15 @@ A **model name emulator** that translates model names for Pinokio applications. 
 4. Click "Install"
 
 The app will automatically:
-- Install Python dependencies
-- Start the server
+- Install Python dependencies (including `cryptography` for encryption)
+- Start the configuration server
 - Open the configuration UI
 
 ### Manual Installation
 
 ```bash
-git clone https://github.com/amondeuz/model-emulator.git
-cd model-emulator
+git clone https://github.com/amondeuz/virtual-model-emulator.git
+cd virtual-model-emulator
 pip install -r requirements.txt
 python -m server.main
 ```
@@ -51,51 +77,22 @@ Server starts on `http://localhost:11434` by default.
 
 ## Configuration
 
-### API Keys (Two Methods)
-
-#### Method 1: Connect Tab (Recommended)
+### API Keys (Connect Tab)
 
 The **Connect** tab provides a UI for managing provider accounts:
 
 1. Open Pinokio and navigate to Virtual Model Emulator
 2. Click the **Connect** tab
-3. Click **Connect** on your preferred provider
-4. Enter an **Account Name** (e.g., "Personal", "Work")
-5. Paste your **API Key**
-6. Click **Save Account**
+3. Click **Add Provider Account**
+4. Select a **Provider** from the dropdown
+5. Enter an **Account Name** (e.g., "Personal", "Work")
+6. Paste your **API Key**
+7. Click **Save Account**
 
 Benefits:
+- API keys are **encrypted** before storage using Fernet encryption
 - Manage multiple accounts per provider
-- No need to edit `.env` files
-- Credentials stored securely in `config/accounts.json`
-
-#### Method 2: Environment Variables
-
-Alternatively, create a `.env` file in the project root:
-
-```bash
-# Copy from .env.example
-cp .env.example .env
-
-# Edit and add your API keys
-OPENAI_API_KEY=sk-...
-ANTHROPIC_API_KEY=sk-ant-...
-GROQ_API_KEY=gsk_...
-```
-
-Supported environment variables:
-- `OPENAI_API_KEY` - OpenAI
-- `ANTHROPIC_API_KEY` - Anthropic
-- `GROQ_API_KEY` - Groq
-- `MISTRAL_API_KEY` - Mistral
-- `GEMINI_API_KEY` - Google Gemini
-- `COHERE_API_KEY` - Cohere
-- `TOGETHER_API_KEY` - Together AI
-- `OPENROUTER_API_KEY` - OpenRouter
-- `DEEPSEEK_API_KEY` - DeepSeek
-- `CEREBRAS_API_KEY` - Cerebras
-
-**Note**: Providers with saved accounts OR environment keys are shown as connected.
+- Environment variable pattern: `{PROVIDER}_{ACCOUNTNAME}` (e.g., `OPENROUTER_PERSONAL`)
 
 ### Pinokio Interface
 
@@ -112,44 +109,32 @@ http://localhost:11434/config.html
 ```
 
 **4-Step Configuration:**
-1. **Account** - Select which credential to use (if multiple per provider)
-2. **Provider** - The actual AI provider (filtered by account)
+1. **Account** - Select which credential to use
+2. **Provider** - The actual AI provider
 3. **Real Model** - The actual model from that provider
-4. **Emulated Model Name** - What Pinokio apps will request (dropdown with 18 popular models + custom)
-
-**Additional Features:**
-- **Connected Providers**: Collapsible section showing provider status
-- **Presets**: Save configurations for quick switching
-- **Test Connection**: Verify your API key works before starting
-- **Status Indicators**: Separate indicators for provider connectivity and emulator state
+4. **Emulated Model Name** - What Pinokio apps will request
 
 ### Workflow
 
-1. **Connect a provider** (if not already done via Connect tab or .env)
+1. **Connect a provider** via the Connect tab
 2. **Select an Account** from the dropdown (Step 1)
 3. **Provider auto-selects** based on account (Step 2)
 4. **Select a model** for that provider (Step 3)
-5. **Choose an Emulated Model Name** from dropdown or enter custom (Step 4)
+5. **Choose an Emulated Model Name** (Step 4)
 6. Click **Start** to activate the emulator
 7. Configure your Pinokio app to use the emulated model name
-8. Requests for the emulated model name will be routed to your real provider
-
-### Stopping the Server
-
-Use Pinokio's **"stop start.json"** button on the app's home page.
+8. Requests are routed through LiteLLM proxy to your real provider
 
 ## Usage
 
 ### Model Name Emulation
 
-The key feature of this emulator is **model name translation**:
-
 ```
 Pinokio app requests: model="llama3"
                 ↓
-Emulator checks: emulatedModelName matches "llama3"? Yes
+LiteLLM Proxy: reads config.yaml, finds llama3 → anthropic/claude-3
                 ↓
-Routes to: Anthropic Claude 3.5 Sonnet (your configured provider/model)
+Routes to: Anthropic Claude 3.5 Sonnet
                 ↓
 Returns response: model="llama3" (Pinokio thinks it talked to llama3)
 ```
@@ -161,16 +146,14 @@ Point any OpenAI-compatible application to:
 http://localhost:11434/v1/chat/completions
 ```
 
-**Example: curl (requesting emulated model)**
+**Example: curl**
 ```bash
-# If emulatedModelName is set to "llama3"
 curl http://localhost:11434/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "llama3",
     "messages": [{"role": "user", "content": "Hello!"}]
   }'
-# Actually routes to your configured provider (e.g., Anthropic Claude)
 ```
 
 **Example: Python**
@@ -190,21 +173,9 @@ response = client.chat.completions.create(
 print(response.choices[0].message.content)
 ```
 
-**Example: Another Pinokio App**
-
-Configure the app with:
-- **API Base URL**: `http://localhost:11434/v1`
-- **API Key**: (any value or leave blank)
-- **Model**: Your configured emulated model name (e.g., `llama3`)
-
 ### Health Check & Status
 
-**Provider connectivity check:**
-```bash
-curl http://localhost:11434/health
-```
-
-**Emulator status (recommended):**
+**Emulator status:**
 ```bash
 curl http://localhost:11434/emulator/status
 ```
@@ -214,253 +185,109 @@ Returns:
 {
   "emulatorRunning": true,
   "providerOnline": true,
-  "providerConfigured": true,
   "currentConfig": {
     "provider": "anthropic",
     "providerName": "Anthropic",
     "model": "claude-3-5-sonnet-20241022",
-    "emulatedModelName": "llama3",
-    "apiKeyEnvVar": "ANTHROPIC_API_KEY"
+    "emulatedModelName": "llama3"
   }
 }
 ```
 
 ## Supported Providers
 
-| Provider | Models | Environment Variable |
-|----------|--------|---------------------|
-| OpenAI | GPT-4, GPT-4 Turbo, GPT-4o, o1 | `OPENAI_API_KEY` |
-| Anthropic | Claude 3.5 Sonnet, Claude 3 Opus | `ANTHROPIC_API_KEY` |
-| Groq | Llama 3.3 70B, Mixtral 8x7B | `GROQ_API_KEY` |
-| Mistral | Mistral Large, Codestral | `MISTRAL_API_KEY` |
-| Google | Gemini 1.5 Pro, Gemini 1.5 Flash | `GEMINI_API_KEY` |
-| Cohere | Command R+, Command R | `COHERE_API_KEY` |
-| Together AI | Llama 3.3 70B, Qwen 2.5 72B | `TOGETHER_API_KEY` |
-| OpenRouter | Access to many providers | `OPENROUTER_API_KEY` |
-| DeepSeek | DeepSeek Chat, DeepSeek Coder | `DEEPSEEK_API_KEY` |
-| Cerebras | Llama 3.1 8B, Llama 3.1 70B | `CEREBRAS_API_KEY` |
+| Provider | Models | Environment Variable Pattern |
+|----------|--------|------------------------------|
+| OpenAI | GPT-4, GPT-4 Turbo, GPT-4o, o1 | `OPENAI_{ACCOUNT}` |
+| Anthropic | Claude 3.5 Sonnet, Claude 3 Opus | `ANTHROPIC_{ACCOUNT}` |
+| Groq | Llama 3.3 70B, Mixtral 8x7B | `GROQ_{ACCOUNT}` |
+| Mistral | Mistral Large, Codestral | `MISTRAL_{ACCOUNT}` |
+| Google | Gemini 1.5 Pro, Gemini 2.0 Flash | `GOOGLE_{ACCOUNT}` |
+| Cohere | Command R+, Command R | `COHERE_{ACCOUNT}` |
+| Together AI | Llama 3.3 70B, Qwen 2.5 72B | `TOGETHER_AI_{ACCOUNT}` |
+| OpenRouter | Access to many providers | `OPENROUTER_{ACCOUNT}` |
+| DeepSeek | DeepSeek Chat, DeepSeek Coder | `DEEPSEEK_{ACCOUNT}` |
+| Cerebras | Llama 3.1 8B, Llama 3.1 70B | `CEREBRAS_{ACCOUNT}` |
 
-**Note**: Providers are dynamically detected based on API key presence in the environment.
-
-## Architecture
-
-```
-Request Flow:
-┌─────────────────────┐
-│ Pinokio App         │
-│ requests "llama3"   │
-└──────────┬──────────┘
-           ↓
-┌─────────────────────┐
-│ Virtual Model       │
-│ Emulator            │
-│ ┌─────────────────┐ │
-│ │ Check if model  │ │
-│ │ = emulatedName  │ │
-│ └────────┬────────┘ │
-│          ↓          │
-│ ┌─────────────────┐ │
-│ │ Route to real   │ │
-│ │ provider/model  │ │
-│ └────────┬────────┘ │
-│          ↓          │
-│ ┌─────────────────┐ │
-│ │ Return response │ │
-│ │ as "llama3"     │ │
-│ └─────────────────┘ │
-└──────────┬──────────┘
-           ↓
-┌─────────────────────┐
-│ Pinokio App         │
-│ receives response   │
-│ from "llama3"       │
-└─────────────────────┘
-```
-
-### File Structure
+## File Structure
 
 ```
 /virtual-model-emulator
 ├── server/
-│   ├── main.py           # FastAPI server with account management endpoints
-│   ├── config.py         # Configuration and account storage
-│   ├── logger.py         # Logging and diagnostics
-│   ├── litellm_client.py # Dynamic provider detection via LiteLLM
-│   └── openai_adapter.py # Model name emulation routing
+│   ├── main.py           # FastAPI server + LiteLLM subprocess manager
+│   └── config.py         # Config generation + encryption
 ├── config/
-│   ├── default.json      # User configuration (includes account, emulatedModelName)
-│   ├── accounts.json     # Saved provider accounts (API keys)
-│   ├── models-cache.json # Cached model list
+│   ├── default.json      # User configuration
+│   ├── accounts.json     # Encrypted API credentials
+│   ├── config.yaml       # Generated LiteLLM config (gitignored)
+│   ├── .secret           # Encryption key (gitignored)
 │   └── saved-configs.json # Saved presets
 ├── public/
-│   ├── config.html       # Emulator configuration UI (4-step hierarchy)
+│   ├── config.html       # Emulator configuration UI
 │   └── connect.html      # Provider account management UI
-├── tests/
-│   └── test_adapter.py   # pytest tests
-├── pinokio.js            # Pinokio app definition (3 tabs)
+├── pinokio.js            # Pinokio app definition
+├── pinokio.json          # Pinokio metadata
 ├── install.json          # Dependency installation
-├── start.json            # Server startup (daemon)
+├── start.json            # Server startup
 ├── requirements.txt      # Python dependencies
 └── .env.example          # API key template
 ```
 
 ## API Endpoints
 
-### `POST /v1/chat/completions`
+### Configuration
+- `GET /config/state` - Current configuration state
+- `POST /config/save` - Save configuration
+- `POST /config/savePreset` - Save a preset
 
-OpenAI-compatible chat completions with model name emulation.
+### Providers
+- `GET /providers` - List all providers with status
+- `GET /providers/accounts` - List saved accounts
+- `POST /providers/connect` - Save API key (encrypted)
+- `POST /providers/disconnect` - Remove account
+- `GET /providers/models` - Get models for provider
 
-**Request:**
-```json
-{
-  "model": "llama3",
-  "messages": [{"role": "user", "content": "Hello"}],
-  "temperature": 0.7,
-  "max_tokens": 1000
-}
-```
+### Emulator Control
+- `POST /emulator/start` - Start LiteLLM proxy
+- `POST /emulator/stop` - Stop LiteLLM proxy
+- `GET /emulator/status` - Detailed emulator status
+- `GET /health` - Health check
 
-**Response:**
-```json
-{
-  "id": "chatcmpl-...",
-  "object": "chat.completion",
-  "created": 1234567890,
-  "model": "llama3",
-  "choices": [{
-    "index": 0,
-    "message": {"role": "assistant", "content": "Hi!"},
-    "finish_reason": "stop"
-  }],
-  "usage": {
-    "prompt_tokens": 10,
-    "completion_tokens": 5,
-    "total_tokens": 15
-  }
-}
-```
+### Models
+- `GET /models` - List available models
 
-### `GET /health`
+## Security
 
-Provider connectivity check.
-
-### `GET /emulator/status`
-
-Comprehensive emulator status including:
-- `emulatorRunning`: Whether the emulator is actively routing requests
-- `providerOnline`: Whether the configured provider is reachable
-- `currentConfig`: Current configuration including emulated model name
-
-### `GET /providers`
-
-List all providers with their connection status.
-
-### `GET /providers/accounts`
-
-List all saved accounts (API keys stored via Connect tab).
-
-### `POST /providers/connect`
-
-Save an API key for a provider.
-
-**Request:**
-```json
-{
-  "provider": "anthropic",
-  "accountName": "Personal",
-  "apiKey": "sk-ant-..."
-}
-```
-
-### `POST /providers/disconnect`
-
-Remove a saved account.
-
-**Request:**
-```json
-{
-  "provider": "anthropic",
-  "accountName": "Personal"
-}
-```
-
-### `GET /providers/models`
-
-Get models for a specific provider (optionally filtered by account).
-
-### `GET /models`
-
-List available models, optionally filtered by provider.
-
-### `GET /config/state`
-
-Current configuration, presets, models, and emulator state.
-
-### `POST /emulator/start`
-
-Activate the emulator with specified provider, model, and emulated model name.
-
-### `POST /emulator/stop`
-
-Deactivate the emulator.
-
-### `POST /config/savePreset`
-
-Save a configuration preset including emulated model name.
+- **API keys are encrypted** using Fernet symmetric encryption
+- Encryption key stored in `config/.secret` (gitignored)
+- Keys only decrypted when starting LiteLLM proxy
+- Nothing leaves your machine except authorized API requests
 
 ## Limitations
 
 1. **Text-Only**: Chat completions only - no images, audio, or file uploads
-2. **No Streaming**: Responses returned complete, not streamed
-3. **Estimated Tokens**: Token counts approximate (4 chars ~ 1 token)
-4. **No Function Calling**: OpenAI tool/function calling not supported
+2. **No Streaming**: Responses returned complete, not streamed (LiteLLM limitation)
+3. **No Function Calling**: OpenAI tool/function calling not fully supported
 
 ## Troubleshooting
 
-**Server won't start**
+**LiteLLM proxy won't start**
 - Check if port 11434 is in use
-- Change port in `config/default.json`
-- Verify Python 3.10+ installed
+- Verify `config/config.yaml` was generated
+- Check logs for error messages
 
-**Provider not showing in dropdown**
-- Check that the API key is set in `.env` file
-- Restart the server after adding keys
-- Check "Connected Providers" section for status
+**Encryption issues**
+- Delete `config/.secret` to regenerate encryption key
+- Ensure `cryptography` package is installed
 
-**Provider connection fails**
-- Verify API key is set in `.env` file
-- Check API key is valid with the provider
-- Click "Test Connection" in UI for diagnostics
-
-**"Model not found" error**
-- Check that the requested model matches your configured `emulatedModelName`
-- If `emulatedModelName` is set, only that exact name will work
-- Leave `emulatedModelName` empty to accept any model name
-
-**Models not loading**
-- Check internet connection
-- Verify provider API key is valid
-- Click "Refresh" in UI
-
-**Configuration UI won't open**
-- Ensure server running (check Pinokio app home)
-- Access directly: `http://localhost:11434/config.html`
-- Check browser console for errors
-
-## Development
-
-**Running Tests:**
-```bash
-pytest tests/ -v
-```
-
-**Adding Providers:**
-Edit `server/litellm_client.py` and add to `PROVIDER_REGISTRY`.
+**Provider not working**
+- Verify API key is correct in Connect tab
+- Check that the provider supports the selected model
 
 ## Resources
 
 - [LiteLLM Documentation](https://docs.litellm.ai/)
-- [OpenAI API Reference](https://platform.openai.com/docs/api-reference/chat)
+- [LiteLLM Proxy Config](https://docs.litellm.ai/docs/simple_proxy)
 - [Pinokio Documentation](https://docs.pinokio.computer/)
 
 ## License
