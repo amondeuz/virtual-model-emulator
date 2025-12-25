@@ -1,14 +1,1 @@
-[
-  {
-    "accountName": "amondeuz1@gmail.com",
-    "provider": "groq",
-    "apiKey": "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",
-    "createdAt": "2025-12-20T05:52:49Z"
-  },
-  {
-    "accountName": "amondeuz1@gmail.com",
-    "provider": "openrouter",
-    "apiKey": "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",
-    "createdAt": "2025-12-20T05:58:40Z"
-  }
-]
+[]
