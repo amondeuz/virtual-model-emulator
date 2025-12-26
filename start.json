@@ -14,7 +14,7 @@
         "path": ".",
         "on": [
           {
-            "event": "/(http:\\/\\/localhost:11434\\/config\\.html)/",
+            "event": "/PINOKIO_STARTUP: (http:\\/\\/localhost:[0-9]+\\/config\\.html)/",
             "done": true
           }
         ]
