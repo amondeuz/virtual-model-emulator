@@ -34,118 +34,6 @@ SAVED_CONFIGS_PATH = CONFIG_DIR / "saved-configs.json"
 # Ensure config directory exists
 CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 
-# Provider registry - defines known providers and their configurations
-PROVIDER_REGISTRY = {
-    "openai": {
-        "name": "OpenAI",
-        "envVar": "OPENAI_API_KEY",
-        "prefix": "openai/",
-        "models": [
-            {"id": "gpt-4", "label": "GPT-4"},
-            {"id": "gpt-4-turbo", "label": "GPT-4 Turbo"},
-            {"id": "gpt-4o", "label": "GPT-4o"},
-            {"id": "gpt-4o-mini", "label": "GPT-4o Mini"},
-            {"id": "gpt-3.5-turbo", "label": "GPT-3.5 Turbo"},
-            {"id": "o1", "label": "o1"},
-            {"id": "o1-mini", "label": "o1 Mini"},
-        ]
-    },
-    "anthropic": {
-        "name": "Anthropic",
-        "envVar": "ANTHROPIC_API_KEY",
-        "prefix": "anthropic/",
-        "models": [
-            {"id": "claude-3-5-sonnet-20241022", "label": "Claude 3.5 Sonnet"},
-            {"id": "claude-3-5-haiku-20241022", "label": "Claude 3.5 Haiku"},
-            {"id": "claude-3-opus-20240229", "label": "Claude 3 Opus"},
-            {"id": "claude-3-sonnet-20240229", "label": "Claude 3 Sonnet"},
-            {"id": "claude-3-haiku-20240307", "label": "Claude 3 Haiku"},
-        ]
-    },
-    "groq": {
-        "name": "Groq",
-        "envVar": "GROQ_API_KEY",
-        "prefix": "groq/",
-        "models": [
-            {"id": "llama-3.3-70b-versatile", "label": "Llama 3.3 70B"},
-            {"id": "llama-3.1-70b-versatile", "label": "Llama 3.1 70B"},
-            {"id": "llama-3.1-8b-instant", "label": "Llama 3.1 8B"},
-            {"id": "mixtral-8x7b-32768", "label": "Mixtral 8x7B"},
-            {"id": "gemma2-9b-it", "label": "Gemma 2 9B"},
-        ]
-    },
-    "mistral": {
-        "name": "Mistral",
-        "envVar": "MISTRAL_API_KEY",
-        "prefix": "mistral/",
-        "models": [
-            {"id": "mistral-large-latest", "label": "Mistral Large"},
-            {"id": "mistral-medium-latest", "label": "Mistral Medium"},
-            {"id": "mistral-small-latest", "label": "Mistral Small"},
-            {"id": "codestral-latest", "label": "Codestral"},
-        ]
-    },
-    "google": {
-        "name": "Google (Gemini)",
-        "envVar": "GEMINI_API_KEY",
-        "prefix": "gemini/",
-        "models": [
-            {"id": "gemini-1.5-pro", "label": "Gemini 1.5 Pro"},
-            {"id": "gemini-1.5-flash", "label": "Gemini 1.5 Flash"},
-            {"id": "gemini-2.0-flash-exp", "label": "Gemini 2.0 Flash"},
-        ]
-    },
-    "cohere": {
-        "name": "Cohere",
-        "envVar": "COHERE_API_KEY",
-        "prefix": "cohere/",
-        "models": [
-            {"id": "command-r-plus", "label": "Command R+"},
-            {"id": "command-r", "label": "Command R"},
-            {"id": "command", "label": "Command"},
-        ]
-    },
-    "together_ai": {
-        "name": "Together AI",
-        "envVar": "TOGETHER_API_KEY",
-        "prefix": "together_ai/",
-        "models": [
-            {"id": "meta-llama/Llama-3.3-70B-Instruct-Turbo", "label": "Llama 3.3 70B"},
-            {"id": "meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo", "label": "Llama 3.1 405B"},
-            {"id": "mistralai/Mixtral-8x22B-Instruct-v0.1", "label": "Mixtral 8x22B"},
-        ]
-    },
-    "openrouter": {
-        "name": "OpenRouter",
-        "envVar": "OPENROUTER_API_KEY",
-        "prefix": "openrouter/",
-        "models": [
-            {"id": "openai/gpt-4-turbo", "label": "GPT-4 Turbo"},
-            {"id": "anthropic/claude-3.5-sonnet", "label": "Claude 3.5 Sonnet"},
-            {"id": "google/gemini-pro-1.5", "label": "Gemini 1.5 Pro"},
-            {"id": "meta-llama/llama-3.1-405b-instruct", "label": "Llama 3.1 405B"},
-        ]
-    },
-    "deepseek": {
-        "name": "DeepSeek",
-        "envVar": "DEEPSEEK_API_KEY",
-        "prefix": "deepseek/",
-        "models": [
-            {"id": "deepseek-chat", "label": "DeepSeek Chat"},
-            {"id": "deepseek-coder", "label": "DeepSeek Coder"},
-        ]
-    },
-    "cerebras": {
-        "name": "Cerebras",
-        "envVar": "CEREBRAS_API_KEY",
-        "prefix": "cerebras/",
-        "models": [
-            {"id": "llama3.1-8b", "label": "Llama 3.1 8B"},
-            {"id": "llama3.1-70b", "label": "Llama 3.1 70B"},
-        ]
-    },
-}
-
 # Cache
 _cached_config: Optional[Dict[str, Any]] = None
 _cached_accounts: Optional[List[Dict[str, Any]]] = None
@@ -222,6 +110,18 @@ def get_env_var_name(provider: str, account_name: str) -> str:
     provider_upper = provider.upper()
     account_upper = account_name.upper().replace(" ", "_").replace("-", "_")
     return f"{provider_upper}_{account_upper}"
+
+
+def get_provider_prefix(provider: str) -> str:
+    """Get the LiteLLM prefix for a provider."""
+    # OpenAI models don't need a prefix
+    if provider == "openai":
+        return ""
+    # Google uses gemini/ prefix
+    if provider == "google":
+        return "gemini/"
+    # Most providers use their id as prefix
+    return f"{provider}/"
 
 
 def get_default_config() -> Dict[str, Any]:
@@ -419,57 +319,22 @@ def generate_litellm_config() -> bool:
 
     # If emulator is configured, add the emulated model
     if emulated_name and current_provider and current_model:
-        provider_info = PROVIDER_REGISTRY.get(current_provider, {})
-        prefix = provider_info.get("prefix", f"{current_provider}/")
+        prefix = get_provider_prefix(current_provider)
 
         # Get the API key env var name
         if current_account:
             env_var = get_env_var_name(current_provider, current_account)
         else:
-            env_var = provider_info.get("envVar", f"{current_provider.upper()}_API_KEY")
+            env_var = f"{current_provider.upper()}_API_KEY"
 
         # Build the real model string
-        if current_provider == "openai":
-            real_model = current_model
-        else:
-            real_model = f"{prefix}{current_model}"
+        real_model = f"{prefix}{current_model}" if prefix else current_model
 
         yaml_lines.append(f"  - model_name: {emulated_name}")
         yaml_lines.append("    litellm_params:")
         yaml_lines.append(f"      model: {real_model}")
         yaml_lines.append(f"      api_key: os.environ/{env_var}")
         yaml_lines.append("")
-
-    # Add all provider models from accounts
-    for acc in accounts:
-        provider = acc.get("provider", "")
-        account_name = acc.get("accountName", "")
-
-        if not provider or not account_name:
-            continue
-
-        provider_info = PROVIDER_REGISTRY.get(provider, {})
-        prefix = provider_info.get("prefix", f"{provider}/")
-        env_var = get_env_var_name(provider, account_name)
-
-        # Add each model from the provider
-        for model in provider_info.get("models", []):
-            model_id = model.get("id", "")
-            if not model_id:
-                continue
-
-            # Build the real model string
-            if provider == "openai":
-                real_model = model_id
-            else:
-                real_model = f"{prefix}{model_id}"
-
-            # Use model_id as the exposed name
-            yaml_lines.append(f"  - model_name: {model_id}")
-            yaml_lines.append("    litellm_params:")
-            yaml_lines.append(f"      model: {real_model}")
-            yaml_lines.append(f"      api_key: os.environ/{env_var}")
-            yaml_lines.append("")
 
     # Write the config file
     try:
@@ -578,60 +443,3 @@ def delete_saved_config(config_id: str) -> bool:
     if len(filtered) == len(configs):
         return False
     return save_saved_configs(filtered)
-
-
-# =============================================================================
-# Provider Utilities
-# =============================================================================
-
-def list_models(provider: Optional[str] = None) -> List[Dict[str, Any]]:
-    """
-    List available models, optionally filtered by provider.
-    """
-    models = []
-    providers_to_check = [provider] if provider else list(PROVIDER_REGISTRY.keys())
-
-    for prov in providers_to_check:
-        if prov not in PROVIDER_REGISTRY:
-            continue
-
-        info = PROVIDER_REGISTRY[prov]
-        for model in info["models"]:
-            models.append({
-                "id": model["id"],
-                "label": model["label"],
-                "provider": prov,
-                "providerName": info["name"]
-            })
-
-    return models
-
-
-def list_providers() -> List[Dict[str, Any]]:
-    """List all providers with their account status."""
-    accounts = get_accounts()
-
-    # Group accounts by provider
-    accounts_by_provider = {}
-    for acc in accounts:
-        prov = acc.get("provider", "")
-        if prov not in accounts_by_provider:
-            accounts_by_provider[prov] = []
-        accounts_by_provider[prov].append(acc)
-
-    providers = []
-    for provider_id, info in PROVIDER_REGISTRY.items():
-        provider_accounts = accounts_by_provider.get(provider_id, [])
-        has_accounts = len(provider_accounts) > 0
-
-        providers.append({
-            "id": provider_id,
-            "name": info["name"],
-            "envVar": info["envVar"],
-            "hasApiKey": has_accounts,
-            "connected": has_accounts,
-            "accountCount": len(provider_accounts),
-            "models": info["models"]
-        })
-
-    return providers

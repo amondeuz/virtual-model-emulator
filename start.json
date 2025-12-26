@@ -10,14 +10,6 @@
     {
       "method": "shell.run",
       "params": {
-        "message": "pip install -r requirements.txt",
-        "venv": "env",
-        "path": "."
-      }
-    },
-    {
-      "method": "shell.run",
-      "params": {
         "message": "python -m server.main",
         "venv": "env",
         "on": [

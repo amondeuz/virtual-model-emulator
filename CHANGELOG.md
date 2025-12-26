@@ -1,5 +1,27 @@
 # Changelog
 
+## [2.0.0-beta.5] - 2025-12-26
+
+### Fixed
+- Removed pip install from start.json (now only in install.json)
+- Fixed ModuleNotFoundError on first launch
+- Fixed LiteLLM proxy startup failures (port conflicts, missing error logs)
+- Fixed UI bugs: tab disconnect, unresponsive stop button, no error display
+- Models now fetched live from LiteLLM instead of hardcoded arrays
+
+### Removed
+- PROVIDER_REGISTRY - replaced with LiteLLM /v1/models endpoint
+- Navigation links between emulator and connect pages
+- "Connected Providers" collapsible section from emulator page
+- "No accounts connected" warning boxes
+- Security message boxes
+- Unnecessary UI features not requested
+
+### Changed
+- Models cached in memory (cleared on restart/provider change/manual refresh)
+- App now only: manages accounts, generates config, starts/stops LiteLLM
+- All provider/model info fetched from LiteLLM
+
 ## [2.0.0-beta.4] - 2025-12-25
 
 ### Fixed
