@@ -1,4 +1,4 @@
-# Virtual Model Emulator v2.0.0-beta.4
+# Virtual Model Emulator v2.0.0-beta.5
 
 A Pinokio app that provides a local OpenAI-compatible HTTP endpoint with **model name emulation** powered by LiteLLM proxy server. Route any model name to any provider - make Pinokio apps think they're talking to one model while actually using another.
 
@@ -275,6 +275,10 @@ Returns:
 - Check if port 11434 is in use
 - Verify `config/config.yaml` was generated
 - Check logs for error messages
+
+**Port conflicts**
+- App checks if port 11434 is in use before starting
+- Error logged if port unavailable
 
 **Encryption issues**
 - Delete `config/.secret` to regenerate encryption key

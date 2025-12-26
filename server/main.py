@@ -11,23 +11,26 @@ Lightweight FastAPI server that:
 import asyncio
 import os
 import signal
+import socket
 import subprocess
 import sys
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, Query
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+import httpx
 import uvicorn
 
 from .config import (
     get_config, update_config, get_accounts, add_account, remove_account,
     get_saved_configs, add_saved_config, update_saved_config, delete_saved_config,
-    get_saved_config_by_id, list_models, list_providers, generate_litellm_config,
-    get_litellm_env_vars, PROVIDER_REGISTRY, CONFIG_DIR
+    get_saved_config_by_id, generate_litellm_config,
+    get_litellm_env_vars, CONFIG_DIR
 )
 
 # Load environment variables from .env file
@@ -37,8 +40,23 @@ load_dotenv()
 _litellm_process: Optional[subprocess.Popen] = None
 _emulator_active: bool = False
 
+# Models cache
+_models_cache: Dict[str, Any] = {}
+
 # Path to LiteLLM config
 LITELLM_CONFIG_PATH = CONFIG_DIR / "config.yaml"
+
+
+def clear_models_cache():
+    """Clear the models cache."""
+    global _models_cache
+    _models_cache = {}
+
+
+def is_port_in_use(port: int) -> bool:
+    """Check if a port is in use."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        return s.connect_ex(('127.0.0.1', port)) == 0
 
 
 def start_litellm_proxy(port: int = 11434) -> bool:
@@ -48,6 +66,18 @@ def start_litellm_proxy(port: int = 11434) -> bool:
     if _litellm_process is not None and _litellm_process.poll() is None:
         # Already running
         return True
+
+    # Check if litellm is installed
+    try:
+        import litellm
+    except ImportError:
+        print("[ERROR] litellm not installed", flush=True)
+        return False
+
+    # Check if port is in use
+    if is_port_in_use(port):
+        print(f"[ERROR] Port {port} is already in use", flush=True)
+        return False
 
     # Generate the config file
     if not generate_litellm_config():
@@ -78,7 +108,6 @@ def start_litellm_proxy(port: int = 11434) -> bool:
         )
 
         # Wait a moment to check if it started
-        import time
         time.sleep(2)
 
         if _litellm_process.poll() is not None:
@@ -89,6 +118,7 @@ def start_litellm_proxy(port: int = 11434) -> bool:
             return False
 
         _emulator_active = True
+        clear_models_cache()  # Clear cache when proxy starts
         print(f"[INFO] LiteLLM proxy started on port {port}", flush=True)
         return True
 
@@ -116,6 +146,7 @@ def stop_litellm_proxy() -> bool:
 
         _litellm_process = None
         _emulator_active = False
+        clear_models_cache()  # Clear cache when proxy stops
         print("[INFO] LiteLLM proxy stopped", flush=True)
         return True
 
@@ -141,6 +172,18 @@ def is_emulator_running() -> bool:
     return _emulator_active
 
 
+async def fetch_litellm_models() -> List[Dict[str, Any]]:
+    """Fetch models from LiteLLM /v1/models endpoint."""
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get("http://localhost:11434/v1/models", timeout=5.0)
+            if response.status_code == 200:
+                return response.json().get("data", [])
+    except Exception:
+        pass
+    return []
+
+
 # Lifespan context manager for startup/shutdown
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -163,7 +206,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Virtual Model Emulator",
     description="OpenAI-compatible endpoint using LiteLLM proxy server",
-    version="2.0.0-beta.4",
+    version="2.0.0-beta.5",
     lifespan=lifespan
 )
 
@@ -180,8 +223,6 @@ async def config_state():
     """Get current configuration state for the UI."""
     config = get_config()
     accounts = get_accounts()
-    providers = list_providers()
-    models = list_models()
 
     # Build safe accounts list (without API keys)
     safe_accounts = [
@@ -193,10 +234,18 @@ async def config_state():
         for acc in accounts
     ]
 
+    # Get unique providers from accounts
+    providers_set = set()
+    for acc in accounts:
+        if acc.get("provider"):
+            providers_set.add(acc.get("provider"))
+
+    providers = [{"id": p, "name": p.title(), "hasApiKey": True} for p in sorted(providers_set)]
+
     return JSONResponse(content={
         "config": config,
         "presets": get_saved_configs(),
-        "models": models,
+        "models": [],  # Models fetched on demand from LiteLLM
         "providers": providers,
         "accounts": safe_accounts,
         "emulatorActive": is_emulator_running(),
@@ -298,7 +347,15 @@ async def config_save_preset(request: Request):
 @app.get("/providers")
 async def get_providers():
     """List all providers with their connection status."""
-    providers = list_providers()
+    accounts = get_accounts()
+
+    # Get unique providers from accounts
+    providers_set = set()
+    for acc in accounts:
+        if acc.get("provider"):
+            providers_set.add(acc.get("provider"))
+
+    providers = [{"id": p, "name": p.title(), "hasApiKey": True} for p in sorted(providers_set)]
     return JSONResponse(content={"providers": providers})
 
 
@@ -345,16 +402,10 @@ async def connect_provider(request: Request):
             content={"success": False, "error": "API key is required"}
         )
 
-    # Validate provider exists in registry
-    if provider not in PROVIDER_REGISTRY:
-        return JSONResponse(
-            status_code=400,
-            content={"success": False, "error": f"Unknown provider: {provider}"}
-        )
-
     # Add the account (this also regenerates LiteLLM config)
     account = add_account(provider, account_name, api_key)
     if account:
+        clear_models_cache()  # Clear cache when provider connected
         return JSONResponse(content={
             "success": True,
             "account": {
@@ -391,6 +442,7 @@ async def disconnect_provider(request: Request):
         )
 
     if remove_account(provider, account_name):
+        clear_models_cache()  # Clear cache when provider disconnected
         return JSONResponse(content={"success": True})
     else:
         return JSONResponse(
@@ -401,8 +453,10 @@ async def disconnect_provider(request: Request):
 
 @app.get("/providers/models")
 async def get_provider_models(provider: Optional[str] = Query(None)):
-    """Get models for a specific provider."""
-    models = list_models(provider)
+    """Get models for a specific provider from LiteLLM."""
+    models = await fetch_litellm_models()
+    if provider:
+        models = [m for m in models if provider in m.get("id", "")]
     return JSONResponse(content={"models": models})
 
 
@@ -411,9 +465,24 @@ async def get_provider_models(provider: Optional[str] = Query(None)):
 # =============================================================================
 
 @app.get("/models")
-async def get_models_endpoint(provider: Optional[str] = Query(None)):
-    """Get available models."""
-    models = list_models(provider)
+async def get_models_endpoint(
+    provider: Optional[str] = Query(None),
+    force: bool = Query(False)
+):
+    """Get available models with caching."""
+    global _models_cache
+
+    cache_key = provider or "all"
+
+    if not force and cache_key in _models_cache:
+        return JSONResponse(content={"models": _models_cache[cache_key]})
+
+    models = await fetch_litellm_models()
+
+    if provider:
+        models = [m for m in models if provider in m.get("id", "")]
+
+    _models_cache[cache_key] = models
     return JSONResponse(content={"models": models})
 
 
@@ -505,11 +574,7 @@ async def emulator_status():
     """Get detailed emulator status."""
     config = get_config()
     provider = config.get("provider", "openai")
-    account = config.get("account", "")
     running = is_emulator_running()
-
-    # Get provider name for display
-    provider_name = PROVIDER_REGISTRY.get(provider, {}).get("name", provider)
 
     return JSONResponse(content={
         "emulatorRunning": running,
@@ -517,7 +582,7 @@ async def emulator_status():
         "currentConfig": {
             "account": config.get("account", ""),
             "provider": provider,
-            "providerName": provider_name,
+            "providerName": provider.title(),
             "model": config.get("model", ""),
             "emulatedModelName": config.get("emulatedModelName", "")
         },
@@ -535,12 +600,11 @@ async def health_check():
     running = is_emulator_running()
     config = get_config()
     provider = config.get("provider", "openai")
-    provider_name = PROVIDER_REGISTRY.get(provider, {}).get("name", provider)
 
     return JSONResponse(content={
         "online": running,
         "provider": provider,
-        "message": f"{provider_name} proxy is running" if running else f"{provider_name} proxy is not running"
+        "message": f"{provider.title()} proxy is running" if running else f"{provider.title()} proxy is not running"
     })
 
 
