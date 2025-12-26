@@ -191,7 +191,7 @@ async def lifespan(app: FastAPI):
     port = int(os.environ.get("PORT", config.get("port", 11434)))
     
     print(f"[INFO] Virtual Model Emulator started on http://localhost:{port}", flush=True)
-    print(f"[INFO] Config UI: http://localhost:{port}/config.html", flush=True)
+    print(f"PINOKIO_STARTUP: http://localhost:{port}/config.html", flush=True)
     print(f"[INFO] Connect UI: http://localhost:{port}/connect.html", flush=True)
     print(f"[INFO] LiteLLM API: http://localhost:{port}/v1/chat/completions", flush=True)
     
