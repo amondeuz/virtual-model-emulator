@@ -10,8 +10,8 @@
     {
       "method": "shell.run",
       "params": {
-        "message": "python -m server.main",
-        "venv": "env",
+        "message": ".\\env\\Scripts\\python.exe -m server.main",
+        "path": ".",
         "on": [
           {
             "event": "/(http:\\/\\/localhost:11434\\/config\\.html)/",
