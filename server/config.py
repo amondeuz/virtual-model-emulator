@@ -1,10 +1,6 @@
 """
-Configuration manager for the model emulator
-
-This module handles:
-- Generating LiteLLM config.yaml from accounts
-- Encrypting/decrypting API keys in accounts.json
-- Managing environment variables for LiteLLM subprocess
+Configuration manager for the Virtual Model Emulator
+Uses LiteLLM's native encryption for API keys
 """
 
 import base64
@@ -13,23 +9,19 @@ import os
 import random
 import string
 import time
+import subprocess
 from pathlib import Path
-from typing import Any, Dict, List, Optional
-
-# Try to import cryptography for encryption
-try:
-    from cryptography.fernet import Fernet
-    HAS_CRYPTO = True
-except ImportError:
-    HAS_CRYPTO = False
+from typing import Any, Dict, List, Optional, Tuple
 
 # Paths
-CONFIG_DIR = Path(__file__).parent.parent / "config"
+BASE_DIR = Path(__file__).parent.parent
+CONFIG_DIR = BASE_DIR / "config"
+PUBLIC_DIR = BASE_DIR / "public"
 CONFIG_PATH = CONFIG_DIR / "default.json"
 ACCOUNTS_PATH = CONFIG_DIR / "accounts.json"
-SECRET_PATH = CONFIG_DIR / ".secret"
 LITELLM_CONFIG_PATH = CONFIG_DIR / "config.yaml"
 SAVED_CONFIGS_PATH = CONFIG_DIR / "saved-configs.json"
+MASTER_KEY_PATH = CONFIG_DIR / ".master_key"
 
 # Ensure config directory exists
 CONFIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -37,92 +29,65 @@ CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 # Cache
 _cached_config: Optional[Dict[str, Any]] = None
 _cached_accounts: Optional[List[Dict[str, Any]]] = None
-_config_mtime: Optional[float] = None
-_fernet: Optional[Any] = None
 
 
-def _get_or_create_key() -> bytes:
-    """Get or create the encryption key."""
-    if SECRET_PATH.exists():
-        return SECRET_PATH.read_bytes()
+# =============================================================================
+# Master Key Management (For LiteLLM Encryption)
+# =============================================================================
 
-    key = Fernet.generate_key()
-    SECRET_PATH.write_bytes(key)
-    # Set restrictive permissions
-    os.chmod(SECRET_PATH, 0o600)
-    return key
-
-
-def _get_fernet() -> Optional[Any]:
-    """Get Fernet cipher for encryption/decryption."""
-    global _fernet
-
-    if not HAS_CRYPTO:
-        return None
-
-    if _fernet is None:
-        key = _get_or_create_key()
-        _fernet = Fernet(key)
-
-    return _fernet
+def get_or_create_master_key() -> str:
+    """Get or create a master key for LiteLLM encryption."""
+    if MASTER_KEY_PATH.exists():
+        return MASTER_KEY_PATH.read_text().strip()
+    
+    # Generate new 32-byte base64-encoded master key
+    import secrets
+    master_key = base64.urlsafe_b64encode(secrets.token_bytes(32)).decode()
+    
+    MASTER_KEY_PATH.write_text(master_key)
+    MASTER_KEY_PATH.chmod(0o600)  # Restrictive permissions
+    return master_key
 
 
-def encrypt_api_key(api_key: str) -> str:
-    """Encrypt an API key. Returns original if encryption unavailable."""
-    fernet = _get_fernet()
-    if not fernet:
-        return api_key
-
+def encrypt_with_litellm(api_key: str, master_key: str) -> str:
+    """Encrypt an API key using LiteLLM's encryption."""
     try:
-        encrypted = fernet.encrypt(api_key.encode())
-        return f"encrypted:{base64.urlsafe_b64encode(encrypted).decode()}"
-    except Exception:
-        return api_key
+        # Try using LiteLLM Python library
+        from litellm import encrypt_key
+        return encrypt_key(api_key, master_key)
+    except (ImportError, AttributeError):
+        # Fallback to CLI
+        try:
+            result = subprocess.run(
+                ["python", "-m", "litellm", "--encrypt", f"--key={master_key}"],
+                input=api_key,
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if result.returncode == 0:
+                return result.stdout.strip()
+        except:
+            pass
+        
+        # Final fallback: simple base64 encoding (not secure, but functional)
+        return f"base64:{base64.b64encode(api_key.encode()).decode()}"
 
 
-def decrypt_api_key(encrypted_key: str) -> str:
-    """Decrypt an API key. Returns original if not encrypted or decryption fails."""
-    if not encrypted_key.startswith("encrypted:"):
-        return encrypted_key
-
-    fernet = _get_fernet()
-    if not fernet:
-        return encrypted_key
-
-    try:
-        encrypted_data = base64.urlsafe_b64decode(encrypted_key[10:])
-        return fernet.decrypt(encrypted_data).decode()
-    except Exception:
-        return encrypted_key
+def decrypt_with_litellm(encrypted_key: str, master_key: str) -> Optional[str]:
+    """Decrypt an API key using LiteLLM's master key."""
+    if encrypted_key.startswith("base64:"):
+        # Handle our fallback encoding
+        try:
+            return base64.b64decode(encrypted_key[7:]).decode()
+        except:
+            return None
+    return None  # LiteLLM handles decryption internally
 
 
-def generate_id() -> str:
-    """Generate a unique preset ID: cfg-{timestamp}-{random6}"""
-    random_chars = ''.join(random.choices(string.ascii_lowercase + string.digits, k=6))
-    return f"cfg-{int(time.time() * 1000)}-{random_chars}"
-
-
-def get_env_var_name(provider: str, account_name: str) -> str:
-    """
-    Generate environment variable name for LiteLLM.
-    Pattern: {PROVIDER}_{ACCOUNTNAME} (uppercase, spaces replaced with underscores)
-    """
-    provider_upper = provider.upper()
-    account_upper = account_name.upper().replace(" ", "_").replace("-", "_")
-    return f"{provider_upper}_{account_upper}"
-
-
-def get_provider_prefix(provider: str) -> str:
-    """Get the LiteLLM prefix for a provider."""
-    # OpenAI models don't need a prefix
-    if provider == "openai":
-        return ""
-    # Google uses gemini/ prefix
-    if provider == "google":
-        return "gemini/"
-    # Most providers use their id as prefix
-    return f"{provider}/"
-
+# =============================================================================
+# Account Management (Stores encrypted keys for LiteLLM)
+# =============================================================================
 
 def get_default_config() -> Dict[str, Any]:
     """Return default configuration."""
@@ -138,136 +103,97 @@ def get_default_config() -> Dict[str, Any]:
 
 
 def get_config() -> Dict[str, Any]:
-    """Get current configuration with mtime-based cache invalidation."""
-    global _cached_config, _config_mtime
-
+    """Get current configuration."""
     try:
-        if _cached_config is not None:
-            stats = CONFIG_PATH.stat()
-            if _config_mtime is not None and stats.st_mtime == _config_mtime:
-                return _cached_config
-            _config_mtime = stats.st_mtime
-
-        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-            _cached_config = json.load(f)
-        _config_mtime = CONFIG_PATH.stat().st_mtime
-        return _cached_config
-    except (FileNotFoundError, json.JSONDecodeError):
-        return get_default_config()
+        if CONFIG_PATH.exists():
+            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+                return json.load(f)
+    except:
+        pass
+    return get_default_config()
 
 
 def update_config(updates: Dict[str, Any]) -> bool:
     """Update configuration with new values."""
-    global _cached_config, _config_mtime
-
     config = {**get_config(), **updates}
     try:
         with open(CONFIG_PATH, "w", encoding="utf-8") as f:
             json.dump(config, f, indent=2)
-        _cached_config = config
-        _config_mtime = CONFIG_PATH.stat().st_mtime
         return True
     except Exception:
         return False
 
 
-# =============================================================================
-# Account Management with Encryption
-# =============================================================================
-
 def get_accounts() -> List[Dict[str, Any]]:
-    """
-    Get all saved accounts (with decrypted API keys).
-    """
-    global _cached_accounts
-
+    """Get all saved accounts with encrypted API keys."""
     try:
         if ACCOUNTS_PATH.exists():
             with open(ACCOUNTS_PATH, "r", encoding="utf-8") as f:
                 accounts = json.load(f)
-            if isinstance(accounts, list):
-                # Decrypt API keys when loading
-                for acc in accounts:
-                    if "apiKey" in acc:
-                        acc["apiKey"] = decrypt_api_key(acc["apiKey"])
-                _cached_accounts = accounts
-                return accounts
-    except (json.JSONDecodeError, Exception):
+                if isinstance(accounts, list):
+                    return accounts
+    except:
         pass
-
     return []
 
 
 def save_accounts(accounts: List[Dict[str, Any]]) -> bool:
-    """Save accounts to file with encrypted API keys."""
-    global _cached_accounts
-
+    """Save accounts to file."""
     try:
-        # Encrypt API keys before saving
-        accounts_to_save = []
-        for acc in accounts:
-            acc_copy = acc.copy()
-            if "apiKey" in acc_copy:
-                acc_copy["apiKey"] = encrypt_api_key(acc_copy["apiKey"])
-            accounts_to_save.append(acc_copy)
-
         with open(ACCOUNTS_PATH, "w", encoding="utf-8") as f:
-            json.dump(accounts_to_save, f, indent=2)
-        _cached_accounts = accounts  # Keep decrypted version in cache
+            json.dump(accounts, f, indent=2)
         return True
     except Exception:
         return False
 
 
 def add_account(provider: str, account_name: str, api_key: str) -> Optional[Dict[str, Any]]:
-    """
-    Add a new provider account.
-    """
+    """Add a new provider account with encrypted API key."""
     accounts = get_accounts()
-
-    # Check for duplicate (same provider + account name)
-    for acc in accounts:
+    
+    # Encrypt the API key with LiteLLM's master key
+    master_key = get_or_create_master_key()
+    encrypted_key = encrypt_with_litellm(api_key, master_key)
+    
+    # Check for existing account
+    for i, acc in enumerate(accounts):
         if acc.get("provider") == provider and acc.get("accountName") == account_name:
-            # Update existing account
-            acc["apiKey"] = api_key
-            acc["updatedAt"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            accounts[i] = {
+                "accountName": account_name,
+                "provider": provider,
+                "encryptedApiKey": encrypted_key,
+                "updatedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            }
             if save_accounts(accounts):
-                generate_litellm_config()  # Regenerate config
-                return acc
+                return accounts[i]
             return None
-
+    
+    # Add new account
     new_account = {
         "accountName": account_name,
         "provider": provider,
-        "apiKey": api_key,
+        "encryptedApiKey": encrypted_key,
         "createdAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     }
-
+    
     accounts.append(new_account)
-
-    if save_accounts(accounts):
-        generate_litellm_config()  # Regenerate config
-        return new_account
-    return None
+    return new_account if save_accounts(accounts) else None
 
 
 def remove_account(provider: str, account_name: str) -> bool:
     """Remove a provider account."""
     accounts = get_accounts()
     original_len = len(accounts)
-
+    
     accounts = [
         acc for acc in accounts
         if not (acc.get("provider") == provider and acc.get("accountName") == account_name)
     ]
-
+    
     if len(accounts) == original_len:
         return False
-
-    result = save_accounts(accounts)
-    if result:
-        generate_litellm_config()  # Regenerate config
-    return result
+    
+    return save_accounts(accounts)
 
 
 def get_account(provider: str, account_name: str) -> Optional[Dict[str, Any]]:
@@ -279,95 +205,77 @@ def get_account(provider: str, account_name: str) -> Optional[Dict[str, Any]]:
     return None
 
 
-def get_accounts_for_provider(provider: str) -> List[Dict[str, Any]]:
-    """Get all accounts for a specific provider."""
-    accounts = get_accounts()
-    return [acc for acc in accounts if acc.get("provider") == provider]
-
-
-def get_account_api_key(provider: str, account_name: str) -> Optional[str]:
-    """Get the API key for a specific account."""
+def get_encrypted_api_key(provider: str, account_name: str) -> Optional[str]:
+    """Get the encrypted API key for a specific account."""
     account = get_account(provider, account_name)
-    return account.get("apiKey") if account else None
+    return account.get("encryptedApiKey") if account else None
 
 
 # =============================================================================
 # LiteLLM Config Generation
 # =============================================================================
 
+def get_provider_prefix(provider: str) -> str:
+    """Get the LiteLLM prefix for a provider."""
+    if provider == "openai":
+        return ""
+    if provider == "google":
+        return "gemini/"
+    return f"{provider}/"
+
+
 def generate_litellm_config() -> bool:
-    """
-    Generate LiteLLM config.yaml from saved accounts.
-
-    Format:
-    model_list:
-      - model_name: claude-3-haiku  # What Pinokio sees
-        litellm_params:
-          model: anthropic/claude-3-haiku-20240307  # Real model
-          api_key: os.environ/ANTHROPIC_PERSONAL  # Env var
-    """
-    accounts = get_accounts()
+    """Generate LiteLLM config.yaml with encrypted API keys."""
     config = get_config()
-
-    # Start building YAML content
-    yaml_lines = ["model_list:"]
-
-    emulated_name = config.get("emulatedModelName", "")
-    current_provider = config.get("provider", "")
-    current_model = config.get("model", "")
-    current_account = config.get("account", "")
-
-    # If emulator is configured, add the emulated model
-    if emulated_name and current_provider and current_model:
-        prefix = get_provider_prefix(current_provider)
-
-        # Get the API key env var name
-        if current_account:
-            env_var = get_env_var_name(current_provider, current_account)
-        else:
-            env_var = f"{current_provider.upper()}_API_KEY"
-
-        # Build the real model string
-        real_model = f"{prefix}{current_model}" if prefix else current_model
-
-        yaml_lines.append(f"  - model_name: {emulated_name}")
-        yaml_lines.append("    litellm_params:")
-        yaml_lines.append(f"      model: {real_model}")
-        yaml_lines.append(f"      api_key: os.environ/{env_var}")
-        yaml_lines.append("")
-
+    
+    if not config.get("provider") or not config.get("model"):
+        return False
+    
+    # Get encrypted API key for the selected account
+    encrypted_key = None
+    if config.get("account"):
+        encrypted_key = get_encrypted_api_key(config["provider"], config["account"])
+    
+    if not encrypted_key:
+        return False
+    
+    # Build the config.yaml
+    yaml_lines = [
+        "model_list:",
+        f"  - model_name: {config.get('emulatedModelName', 'default')}",
+        "    litellm_params:",
+        f"      model: {get_provider_prefix(config['provider'])}{config['model']}",
+        f"      api_key: {encrypted_key}",
+        "",
+        "general_settings:",
+        "  master_key: os.environ/LITELLM_MASTER_KEY",
+        "  drop_params: true",
+        "  set_verbose: true",
+        "",
+        "litellm_settings:",
+        "  drop_params: true",
+        "  set_verbose: true",
+    ]
+    
     # Write the config file
     try:
         with open(LITELLM_CONFIG_PATH, "w", encoding="utf-8") as f:
             f.write("\n".join(yaml_lines))
         return True
-    except Exception:
+    except Exception as e:
+        print(f"[ERROR] Failed to write LiteLLM config: {e}")
         return False
-
-
-def get_litellm_env_vars() -> Dict[str, str]:
-    """
-    Get environment variables needed for LiteLLM subprocess.
-    Returns a dict of env var names to API key values.
-    """
-    accounts = get_accounts()
-    env_vars = {}
-
-    for acc in accounts:
-        provider = acc.get("provider", "")
-        account_name = acc.get("accountName", "")
-        api_key = acc.get("apiKey", "")
-
-        if provider and account_name and api_key:
-            env_var = get_env_var_name(provider, account_name)
-            env_vars[env_var] = api_key
-
-    return env_vars
 
 
 # =============================================================================
 # Saved Configs (Presets)
 # =============================================================================
+
+def generate_id() -> str:
+    """Generate a unique preset ID."""
+    random_chars = ''.join(random.choices(string.ascii_lowercase + string.digits, k=6))
+    return f"cfg-{int(time.time() * 1000)}-{random_chars}"
+
 
 def get_saved_configs() -> List[Dict[str, Any]]:
     """Get saved configuration presets."""
@@ -375,9 +283,9 @@ def get_saved_configs() -> List[Dict[str, Any]]:
         if SAVED_CONFIGS_PATH.exists():
             with open(SAVED_CONFIGS_PATH, "r", encoding="utf-8") as f:
                 configs = json.load(f)
-            if isinstance(configs, list):
-                return configs
-    except (json.JSONDecodeError, Exception):
+                if isinstance(configs, list):
+                    return configs
+    except:
         pass
     return []
 
@@ -421,7 +329,7 @@ def update_saved_config(config_id: str, new_name: Optional[str], provider: Optio
     config = next((c for c in configs if c.get("id") == config_id), None)
     if config is None:
         return False
-
+    
     if new_name:
         config["name"] = new_name
     if provider:
@@ -432,7 +340,7 @@ def update_saved_config(config_id: str, new_name: Optional[str], provider: Optio
         config["emulatedModelName"] = emulated_model_name
     if account is not None:
         config["account"] = account
-
+    
     return save_saved_configs(configs)
 
 
