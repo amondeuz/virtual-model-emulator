@@ -3,21 +3,42 @@
     {
       "method": "log",
       "params": {
-        "raw": "Installing Python dependencies..."
+        "raw": "Creating Python virtual environment..."
       }
     },
     {
       "method": "shell.run",
       "params": {
-        "message": "pip install -r requirements.txt",
-        "venv": "env",
+        "message": "python -m venv env",
         "path": "."
       }
     },
     {
       "method": "log",
       "params": {
-        "raw": "Installation complete!"
+        "raw": "Installing Python dependencies... This may take a few minutes."
+      }
+    },
+    {
+      "method": "shell.run",
+      "params": {
+        "message": "env\\Scripts\\pip install --upgrade pip",
+        "path": ".",
+        "venv": "env"
+      }
+    },
+    {
+      "method": "shell.run",
+      "params": {
+        "message": "env\\Scripts\\pip install -r requirements.txt",
+        "path": ".",
+        "venv": "env"
+      }
+    },
+    {
+      "method": "log",
+      "params": {
+        "raw": "Installation complete! You can now start the emulator."
       }
     }
   ]
