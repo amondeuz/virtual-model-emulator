@@ -1,5 +1,5 @@
 module.exports = {
-  version: '4.0',
+  version: '5.3.0',
   title: 'Virtual Model Emulator',
   description: 'OpenAI-compatible endpoint powered by LiteLLM. Supports 100+ AI providers.',
   icon: 'icon.png',
@@ -41,7 +41,8 @@ module.exports = {
     }
 
     return [
-      { text: 'Open UI', icon: 'fa-solid fa-robot', href: url, default: true },
+      { text: 'Connect', icon: 'fa-solid fa-plug', href: url.replace('config.html', 'connect.html') },
+      { text: 'Emulator', icon: 'fa-solid fa-robot', href: url, default: true },
       updateItem
     ];
   }
