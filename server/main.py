@@ -205,13 +205,14 @@ async def lifespan(app: FastAPI):
     management_port = config.get("managementPort", 8765)
     emulator_port = config.get("emulatorPort", 11434)
 
-    print(f"[INFO] Virtual Model Emulator Management UI on http://localhost:{management_port}", flush=True)
-    print(f"PINOKIO_STARTUP: http://localhost:{management_port}/config.html", flush=True)
-    print(f"[INFO] Connect UI: http://localhost:{management_port}/connect.html", flush=True)
-    print(f"[INFO] LiteLLM API will be available on: http://localhost:{emulator_port}/v1/chat/completions", flush=True)
-
     # Ensure config directory exists
     CONFIG_DIR.mkdir(exist_ok=True)
+
+    # PINOKIO_STARTUP must be FIRST - Pinokio captures the first http:// URL it sees
+    print(f"http://localhost:{management_port}/config.html", flush=True)
+    print(f"[INFO] Management UI: localhost:{management_port}/config.html", flush=True)
+    print(f"[INFO] Connect UI: localhost:{management_port}/connect.html", flush=True)
+    print(f"[INFO] LiteLLM API (when started): localhost:{emulator_port}/v1/chat/completions", flush=True)
 
     yield
 
@@ -980,10 +981,7 @@ def main():
     management_port = config.get("managementPort", 8765)
     emulator_port = config.get("emulatorPort", 11434)
 
-    print(f"[INFO] Starting Virtual Model Emulator")
-    print(f"[INFO] Management UI: http://localhost:{management_port}/config.html")
-    print(f"[INFO] Connect UI: http://localhost:{management_port}/connect.html")
-    print(f"[INFO] LiteLLM API (when started): http://localhost:{emulator_port}/v1/chat/completions")
+    print(f"[INFO] Starting Virtual Model Emulator on port {management_port}")
 
     uvicorn.run(
         app,
