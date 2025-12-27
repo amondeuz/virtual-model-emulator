@@ -27,42 +27,60 @@
     h1 { margin: 0 0 6px; font-size: 24px; }
     .muted { color: #627384; font-size: 14px; margin: 0; }
 
+    /* Add Provider Button */
+    .add-provider-btn {
+      background: #3b82f6;
+      color: white;
+      border: none;
+      border-radius: 10px;
+      padding: 12px 20px;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 14px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 20px;
+    }
+    .add-provider-btn:hover {
+      background: #2563eb;
+    }
+
+    /* Provider Cards - Only for providers with accounts */
     .provider-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
       gap: 16px;
       margin-bottom: 20px;
     }
     .provider-card {
       background: white;
-      border: 1px solid #e5ecf3;
+      border: 1px solid #22c55e;
       border-radius: 12px;
       padding: 20px;
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
       box-shadow: 0 4px 12px rgba(0,0,0,0.04);
     }
-    .provider-card.has-accounts {
-      border-color: #22c55e;
-      background: #f0fdf4;
-    }
     .provider-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    .provider-title {
       display: flex;
       align-items: center;
       gap: 12px;
     }
     .provider-icon {
-      width: 48px;
-      height: 48px;
+      width: 44px;
+      height: 44px;
       border-radius: 10px;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
       display: flex;
       align-items: center;
       justify-content: center;
       color: white;
       font-weight: bold;
-      font-size: 18px;
+      font-size: 16px;
     }
     .provider-icon.openai { background: linear-gradient(135deg, #10a37f 0%, #0d8c6c 100%); }
     .provider-icon.anthropic { background: linear-gradient(135deg, #d97706 0%, #b45309 100%); }
@@ -75,35 +93,23 @@
     .provider-icon.deepseek { background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); }
     .provider-icon.cerebras { background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); }
 
-    .provider-info h3 { margin: 0; font-size: 16px; }
-    .provider-badge {
-      display: inline-block;
-      padding: 4px 10px;
-      border-radius: 999px;
-      font-size: 11px;
-      font-weight: 600;
-      margin-top: 4px;
-    }
-    .badge-apikey {
-      background: #fef3c7;
-      color: #92400e;
-    }
-    .badge-oauth {
-      background: #d1fae5;
-      color: #065f46;
+    .provider-name { font-weight: 600; font-size: 16px; }
+    .provider-actions {
+      display: flex;
+      gap: 8px;
     }
 
+    /* Account List */
     .accounts-list {
       border-top: 1px solid #e5ecf3;
       padding-top: 12px;
-      margin-top: 4px;
     }
     .account-item {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 8px 0;
-      font-size: 13px;
+      padding: 10px 0;
+      font-size: 14px;
     }
     .account-item:not(:last-child) {
       border-bottom: 1px solid #f0f4f8;
@@ -115,36 +121,48 @@
     }
     .account-name .check {
       color: #22c55e;
-      font-size: 14px;
+      font-size: 16px;
     }
-    .remove-btn {
-      background: none;
-      border: none;
-      color: #dc2626;
-      cursor: pointer;
-      font-size: 12px;
-      padding: 4px 8px;
-      border-radius: 4px;
-    }
-    .remove-btn:hover {
-      background: #fef2f2;
+    .account-checkbox {
+      margin-right: 8px;
     }
 
+    /* Buttons */
     .btn {
       border: none;
       border-radius: 8px;
-      padding: 10px 16px;
+      padding: 8px 14px;
       font-weight: 600;
       cursor: pointer;
       font-size: 13px;
       transition: all 0.2s;
     }
-    .btn-connect {
+    .btn-add {
+      background: #e0f2fe;
+      color: #0369a1;
+    }
+    .btn-add:hover {
+      background: #bae6fd;
+    }
+    .btn-edit {
+      background: #fef3c7;
+      color: #92400e;
+    }
+    .btn-edit:hover {
+      background: #fde68a;
+    }
+    .btn-delete {
+      background: #fee2e2;
+      color: #b91c1c;
+    }
+    .btn-delete:hover {
+      background: #fecaca;
+    }
+    .btn-primary {
       background: #3b82f6;
       color: white;
-      width: 100%;
     }
-    .btn-connect:hover {
+    .btn-primary:hover {
       background: #2563eb;
     }
     .btn-secondary {
@@ -155,29 +173,24 @@
       background: #e2e8f0;
     }
 
-    .security-message {
+    /* Empty State */
+    .empty-state {
       background: white;
-      border: 1px solid #e5ecf3;
+      border: 2px dashed #e5ecf3;
       border-radius: 12px;
-      padding: 20px;
+      padding: 40px;
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    .empty-state h3 {
+      margin: 0 0 8px;
+      font-size: 18px;
+      color: #1f2933;
+    }
+    .empty-state p {
+      margin: 0 0 16px;
+      color: #627384;
       font-size: 14px;
-      line-height: 1.6;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.04);
-    }
-    .security-message h3 {
-      margin: 0 0 12px;
-      font-size: 15px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .security-message ul {
-      margin: 0;
-      padding-left: 24px;
-      color: #64748b;
-    }
-    .security-message li {
-      margin-bottom: 6px;
     }
 
     /* Modal */
@@ -200,7 +213,7 @@
       background: white;
       border-radius: 12px;
       padding: 24px;
-      max-width: 440px;
+      max-width: 480px;
       width: 90%;
       box-shadow: 0 20px 60px rgba(0,0,0,0.2);
     }
@@ -217,14 +230,14 @@
       margin-bottom: 6px;
       font-size: 13px;
     }
-    .form-group input {
+    .form-group input, .form-group select {
       width: 100%;
       padding: 10px 12px;
       border: 1px solid #d1d5db;
       border-radius: 8px;
       font-size: 14px;
     }
-    .form-group input:focus {
+    .form-group input:focus, .form-group select:focus {
       outline: none;
       border-color: #3b82f6;
       box-shadow: 0 0 0 3px rgba(59,130,246,0.15);
@@ -248,6 +261,14 @@
       margin-top: 20px;
     }
 
+    /* Provider Select with Icons */
+    .provider-option {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* Status Messages */
     .status-message {
       padding: 12px 16px;
       border-radius: 8px;
@@ -263,17 +284,19 @@
       color: #991b1b;
     }
 
-    .nav-link {
-      display: inline-flex;
+    /* Edit Mode */
+    .edit-mode-bar {
+      display: none;
+      background: #fef3c7;
+      border: 1px solid #fcd34d;
+      border-radius: 8px;
+      padding: 10px 16px;
+      margin-bottom: 12px;
       align-items: center;
-      gap: 6px;
-      color: #3b82f6;
-      text-decoration: none;
-      font-size: 13px;
-      margin-top: 16px;
+      justify-content: space-between;
     }
-    .nav-link:hover {
-      text-decoration: underline;
+    .edit-mode-bar.active {
+      display: flex;
     }
   </style>
 </head>
@@ -281,31 +304,37 @@
   <div class="container">
     <header>
       <h1>Connect Providers</h1>
-      <p class="muted">Add your API keys to enable AI providers. Each account can have a unique name for easy identification.</p>
-      <a href="/config.html" class="nav-link">&larr; Back to Emulator Configuration</a>
+      <p class="muted">Add your API keys to enable AI providers. Keys are encrypted before storage.</p>
     </header>
 
     <div id="status-container"></div>
 
-    <div id="provider-grid" class="provider-grid">
-      <!-- Dynamically populated -->
+    <button class="add-provider-btn" onclick="openAddModal()">
+      <span>+</span> Add Provider Account
+    </button>
+
+    <div id="empty-state" class="empty-state" style="display:none;">
+      <h3>No provider accounts connected</h3>
+      <p>Add your first provider account to get started with the emulator.</p>
+      <button class="btn btn-primary" onclick="openAddModal()">Add Provider Account</button>
     </div>
 
-    <div class="security-message">
-      <h3>Your credentials are secure</h3>
-      <ul>
-        <li><strong>API keys</strong> are stored locally in encrypted JSON files</li>
-        <li><strong>Nothing leaves your machine</strong> except API requests you authorize</li>
-        <li>Keys are only used when making requests to the respective provider</li>
-        <li>You can remove any account at any time</li>
-      </ul>
+    <div id="provider-grid" class="provider-grid">
+      <!-- Dynamically populated - only shows providers with accounts -->
     </div>
   </div>
 
-  <!-- Modal for API key input -->
-  <div id="api-key-modal" class="modal">
+  <!-- Add/Edit Modal -->
+  <div id="provider-modal" class="modal">
     <div class="modal-content">
-      <h2 id="modal-title">Connect Provider</h2>
+      <h2 id="modal-title">Add Provider Account</h2>
+
+      <div class="form-group">
+        <label for="provider-select">Provider</label>
+        <select id="provider-select">
+          <option value="">-- Select a provider --</option>
+        </select>
+      </div>
 
       <div class="form-group">
         <label for="account-name-input">Account Name</label>
@@ -323,148 +352,235 @@
 
       <div class="modal-buttons">
         <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-        <button class="btn btn-connect" onclick="saveApiKey()" style="width:auto;">Save Account</button>
+        <button class="btn btn-primary" onclick="saveAccount()">Save Account</button>
       </div>
     </div>
   </div>
 
   <script>
-    // Provider definitions matching server/litellm_client.py
-    const PROVIDERS = [
-      { id: 'openai', name: 'OpenAI', auth: 'api_key', keyLink: 'https://platform.openai.com/api-keys', envVar: 'OPENAI_API_KEY' },
-      { id: 'anthropic', name: 'Anthropic', auth: 'api_key', keyLink: 'https://console.anthropic.com/settings/keys', envVar: 'ANTHROPIC_API_KEY' },
-      { id: 'groq', name: 'Groq', auth: 'api_key', keyLink: 'https://console.groq.com/keys', envVar: 'GROQ_API_KEY' },
-      { id: 'mistral', name: 'Mistral', auth: 'api_key', keyLink: 'https://console.mistral.ai/api-keys/', envVar: 'MISTRAL_API_KEY' },
-      { id: 'google', name: 'Google (Gemini)', auth: 'api_key', keyLink: 'https://aistudio.google.com/app/apikey', envVar: 'GEMINI_API_KEY' },
-      { id: 'cohere', name: 'Cohere', auth: 'api_key', keyLink: 'https://dashboard.cohere.com/api-keys', envVar: 'COHERE_API_KEY' },
-      { id: 'together_ai', name: 'Together AI', auth: 'api_key', keyLink: 'https://api.together.xyz/settings/api-keys', envVar: 'TOGETHER_API_KEY' },
-      { id: 'openrouter', name: 'OpenRouter', auth: 'api_key', keyLink: 'https://openrouter.ai/keys', envVar: 'OPENROUTER_API_KEY' },
-      { id: 'deepseek', name: 'DeepSeek', auth: 'api_key', keyLink: 'https://platform.deepseek.com/api_keys', envVar: 'DEEPSEEK_API_KEY' },
-      { id: 'cerebras', name: 'Cerebras', auth: 'api_key', keyLink: 'https://cloud.cerebras.ai/platform', envVar: 'CEREBRAS_API_KEY' }
+    // Provider definitions
+    var PROVIDERS = [
+      { id: 'openai', name: 'OpenAI', keyLink: 'https://platform.openai.com/api-keys', initials: 'OA' },
+      { id: 'anthropic', name: 'Anthropic', keyLink: 'https://console.anthropic.com/settings/keys', initials: 'A' },
+      { id: 'groq', name: 'Groq', keyLink: 'https://console.groq.com/keys', initials: 'G' },
+      { id: 'mistral', name: 'Mistral', keyLink: 'https://console.mistral.ai/api-keys/', initials: 'M' },
+      { id: 'google', name: 'Google (Gemini)', keyLink: 'https://aistudio.google.com/app/apikey', initials: 'G' },
+      { id: 'cohere', name: 'Cohere', keyLink: 'https://dashboard.cohere.com/api-keys', initials: 'C' },
+      { id: 'together_ai', name: 'Together AI', keyLink: 'https://api.together.xyz/settings/api-keys', initials: 'T' },
+      { id: 'openrouter', name: 'OpenRouter', keyLink: 'https://openrouter.ai/keys', initials: 'OR' },
+      { id: 'deepseek', name: 'DeepSeek', keyLink: 'https://platform.deepseek.com/api_keys', initials: 'DS' },
+      { id: 'cerebras', name: 'Cerebras', keyLink: 'https://cloud.cerebras.ai/platform', initials: 'CB' }
     ];
 
-    let currentProvider = null;
-    let accounts = [];
+    var accounts = [];
+    var editMode = {};  // Track which provider is in edit mode
 
     function showStatus(message, type) {
-      const container = document.getElementById('status-container');
-      container.innerHTML = `<div class="status-message ${type}">${message}</div>`;
-      setTimeout(() => { container.innerHTML = ''; }, 5000);
+      var container = document.getElementById('status-container');
+      container.innerHTML = '<div class="status-message ' + type + '">' + message + '</div>';
+      setTimeout(function() { container.innerHTML = ''; }, 5000);
     }
 
-    function getProviderInitials(id) {
-      const map = {
-        'openai': 'OA',
-        'anthropic': 'A',
-        'groq': 'G',
-        'mistral': 'M',
-        'google': 'G',
-        'cohere': 'C',
-        'together_ai': 'T',
-        'openrouter': 'OR',
-        'deepseek': 'DS',
-        'cerebras': 'CB'
-      };
-      return map[id] || id.substring(0, 2).toUpperCase();
+    function escapeHtml(text) {
+      var div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
     }
 
-    async function loadAccounts() {
-      try {
-        const response = await fetch('/providers/accounts');
-        if (response.ok) {
-          accounts = await response.json();
-        } else {
+    function getProviderInfo(id) {
+      return PROVIDERS.find(function(p) { return p.id === id; }) || { id: id, name: id, initials: id.substring(0, 2).toUpperCase() };
+    }
+
+    function loadAccounts() {
+      fetch('/providers/accounts')
+        .then(function(response) {
+          if (response.ok) {
+            return response.json();
+          }
+          return [];
+        })
+        .then(function(data) {
+          accounts = data;
+          renderProviderCards();
+        })
+        .catch(function(err) {
+          console.error('Failed to load accounts:', err);
           accounts = [];
-        }
-      } catch (err) {
-        console.error('Failed to load accounts:', err);
-        accounts = [];
-      }
-      renderProviders();
+          renderProviderCards();
+        });
     }
 
-    function renderProviders() {
-      const grid = document.getElementById('provider-grid');
+    function renderProviderCards() {
+      var grid = document.getElementById('provider-grid');
+      var emptyState = document.getElementById('empty-state');
       grid.innerHTML = '';
 
       // Group accounts by provider
-      const accountsByProvider = {};
-      accounts.forEach(acc => {
+      var accountsByProvider = {};
+      accounts.forEach(function(acc) {
         if (!accountsByProvider[acc.provider]) {
           accountsByProvider[acc.provider] = [];
         }
         accountsByProvider[acc.provider].push(acc);
       });
 
-      PROVIDERS.forEach(provider => {
-        const providerAccounts = accountsByProvider[provider.id] || [];
-        const hasAccounts = providerAccounts.length > 0;
+      var providersWithAccounts = Object.keys(accountsByProvider);
 
-        const card = document.createElement('div');
-        card.className = 'provider-card' + (hasAccounts ? ' has-accounts' : '');
+      if (providersWithAccounts.length === 0) {
+        emptyState.style.display = 'block';
+        return;
+      }
 
-        let accountsHtml = '';
-        if (hasAccounts) {
-          accountsHtml = `
-            <div class="accounts-list">
-              ${providerAccounts.map(acc => `
-                <div class="account-item">
-                  <span class="account-name">
-                    <span class="check">&#10003;</span>
-                    ${escapeHtml(acc.accountName)}
-                  </span>
-                  <button class="remove-btn" onclick="disconnectAccount('${provider.id}', '${escapeHtml(acc.accountName)}')">
-                    Remove
-                  </button>
-                </div>
-              `).join('')}
-            </div>
-          `;
+      emptyState.style.display = 'none';
+
+      // Only render cards for providers with accounts
+      providersWithAccounts.forEach(function(providerId) {
+        var provider = getProviderInfo(providerId);
+        var providerAccounts = accountsByProvider[providerId];
+        var isEditMode = editMode[providerId] || false;
+
+        var card = document.createElement('div');
+        card.className = 'provider-card';
+
+        var accountsHtml = providerAccounts.map(function(acc) {
+          return '<div class="account-item">' +
+            (isEditMode ? '<input type="checkbox" class="account-checkbox" data-provider="' + providerId + '" data-account="' + escapeHtml(acc.accountName) + '">' : '') +
+            '<span class="account-name">' +
+              '<span class="check">&#10003;</span>' +
+              escapeHtml(acc.accountName) +
+            '</span>' +
+          '</div>';
+        }).join('');
+
+        var editModeBar = '';
+        if (isEditMode) {
+          editModeBar = '<div class="edit-mode-bar active">' +
+            '<span>Select accounts to delete</span>' +
+            '<div>' +
+              '<button class="btn btn-secondary" onclick="cancelEditMode(\'' + providerId + '\')">Cancel</button>' +
+              '<button class="btn btn-delete" onclick="deleteSelectedAccounts(\'' + providerId + '\')">Delete Selected</button>' +
+            '</div>' +
+          '</div>';
         }
 
-        card.innerHTML = `
-          <div class="provider-header">
-            <div class="provider-icon ${provider.id}">${getProviderInitials(provider.id)}</div>
-            <div class="provider-info">
-              <h3>${provider.name}</h3>
-              <span class="provider-badge badge-apikey">API Key Required</span>
-            </div>
-          </div>
-          ${accountsHtml}
-          <button class="btn btn-connect" onclick="connectProvider('${provider.id}')">
-            ${hasAccounts ? 'Add Another Account' : 'Connect'}
-          </button>
-        `;
+        card.innerHTML = '<div class="provider-header">' +
+          '<div class="provider-title">' +
+            '<div class="provider-icon ' + providerId + '">' + provider.initials + '</div>' +
+            '<span class="provider-name">' + provider.name + '</span>' +
+          '</div>' +
+          '<div class="provider-actions">' +
+            '<button class="btn btn-add" onclick="openAddModalForProvider(\'' + providerId + '\')">Add</button>' +
+            '<button class="btn btn-edit" onclick="toggleEditMode(\'' + providerId + '\')">' + (isEditMode ? 'Done' : 'Edit') + '</button>' +
+          '</div>' +
+        '</div>' +
+        editModeBar +
+        '<div class="accounts-list">' +
+          accountsHtml +
+        '</div>';
 
         grid.appendChild(card);
       });
     }
 
-    function escapeHtml(text) {
-      const div = document.createElement('div');
-      div.textContent = text;
-      return div.innerHTML;
+    function populateProviderSelect() {
+      var select = document.getElementById('provider-select');
+      select.innerHTML = '<option value="">-- Select a provider --</option>';
+
+      PROVIDERS.forEach(function(provider) {
+        var opt = document.createElement('option');
+        opt.value = provider.id;
+        opt.textContent = provider.name;
+        select.appendChild(opt);
+      });
     }
 
-    function connectProvider(providerId) {
-      const provider = PROVIDERS.find(p => p.id === providerId);
-      if (!provider) return;
-
-      currentProvider = provider;
-      document.getElementById('modal-title').textContent = `Connect ${provider.name}`;
-      document.getElementById('api-key-link').href = provider.keyLink;
+    function openAddModal() {
+      document.getElementById('modal-title').textContent = 'Add Provider Account';
+      document.getElementById('provider-select').value = '';
+      document.getElementById('provider-select').disabled = false;
       document.getElementById('account-name-input').value = '';
       document.getElementById('api-key-input').value = '';
-      document.getElementById('api-key-modal').classList.add('active');
+      document.getElementById('api-key-link').href = '#';
+      document.getElementById('provider-modal').classList.add('active');
+      document.getElementById('provider-select').focus();
+    }
+
+    function openAddModalForProvider(providerId) {
+      var provider = getProviderInfo(providerId);
+      document.getElementById('modal-title').textContent = 'Add ' + provider.name + ' Account';
+      document.getElementById('provider-select').value = providerId;
+      document.getElementById('provider-select').disabled = true;
+      document.getElementById('account-name-input').value = '';
+      document.getElementById('api-key-input').value = '';
+      document.getElementById('api-key-link').href = provider.keyLink || '#';
+      document.getElementById('provider-modal').classList.add('active');
       document.getElementById('account-name-input').focus();
     }
 
-    async function saveApiKey() {
-      const accountName = document.getElementById('account-name-input').value.trim();
-      const apiKey = document.getElementById('api-key-input').value.trim();
+    function closeModal() {
+      document.getElementById('provider-modal').classList.remove('active');
+    }
 
+    function toggleEditMode(providerId) {
+      editMode[providerId] = !editMode[providerId];
+      renderProviderCards();
+    }
+
+    function cancelEditMode(providerId) {
+      editMode[providerId] = false;
+      renderProviderCards();
+    }
+
+    function deleteSelectedAccounts(providerId) {
+      var checkboxes = document.querySelectorAll('input[data-provider="' + providerId + '"]:checked');
+      if (checkboxes.length === 0) {
+        showStatus('No accounts selected', 'error');
+        return;
+      }
+
+      if (!confirm('Delete ' + checkboxes.length + ' selected account(s)?')) {
+        return;
+      }
+
+      var deleted = 0;
+      var promises = [];
+
+      checkboxes.forEach(function(checkbox) {
+        var accountName = checkbox.dataset.account;
+        var promise = fetch('/providers/disconnect', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ provider: providerId, accountName: accountName })
+        })
+        .then(function(response) {
+          if (response.ok) {
+            deleted++;
+          }
+        })
+        .catch(function(err) {
+          console.error('Failed to delete account:', err);
+        });
+        promises.push(promise);
+      });
+
+      Promise.all(promises).then(function() {
+        editMode[providerId] = false;
+        showStatus('Deleted ' + deleted + ' account(s)', 'success');
+        loadAccounts();
+      });
+    }
+
+    function saveAccount() {
+      var provider = document.getElementById('provider-select').value;
+      var accountName = document.getElementById('account-name-input').value.trim();
+      var apiKey = document.getElementById('api-key-input').value.trim();
+
+      if (!provider) {
+        showStatus('Please select a provider', 'error');
+        return;
+      }
       if (!accountName) {
-        showStatus('Please enter an account name (e.g., Personal, Work)', 'error');
+        showStatus('Please enter an account name', 'error');
         return;
       }
       if (!apiKey) {
@@ -472,61 +588,42 @@
         return;
       }
 
-      try {
-        const response = await fetch('/providers/connect', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            provider: currentProvider.id,
-            accountName: accountName,
-            apiKey: apiKey
-          })
+      fetch('/providers/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider: provider,
+          accountName: accountName,
+          apiKey: apiKey
+        })
+      })
+      .then(function(response) {
+        return response.json().then(function(data) {
+          return { ok: response.ok, data: data };
         });
-
-        const data = await response.json();
-
-        if (response.ok && data.success) {
+      })
+      .then(function(result) {
+        if (result.ok && result.data.success) {
           closeModal();
-          showStatus(`Successfully connected "${accountName}" for ${currentProvider.name}`, 'success');
+          var providerInfo = getProviderInfo(provider);
+          showStatus('Successfully added "' + accountName + '" for ' + providerInfo.name, 'success');
           loadAccounts();
         } else {
-          showStatus(data.error || 'Failed to connect account', 'error');
+          showStatus(result.data.error || 'Failed to save account', 'error');
         }
-      } catch (err) {
-        showStatus(`Connection error: ${err.message}`, 'error');
+      })
+      .catch(function(err) {
+        showStatus('Connection error: ' + err.message, 'error');
+      });
+    }
+
+    // Update API key link when provider changes
+    document.getElementById('provider-select').addEventListener('change', function() {
+      var provider = PROVIDERS.find(function(p) { return p.id === this.value; }.bind(this));
+      if (provider) {
+        document.getElementById('api-key-link').href = provider.keyLink;
       }
-    }
-
-    async function disconnectAccount(providerId, accountName) {
-      if (!confirm(`Remove account "${accountName}"? This cannot be undone.`)) return;
-
-      try {
-        const response = await fetch('/providers/disconnect', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            provider: providerId,
-            accountName: accountName
-          })
-        });
-
-        const data = await response.json();
-
-        if (response.ok && data.success) {
-          showStatus(`Account "${accountName}" removed`, 'success');
-          loadAccounts();
-        } else {
-          showStatus(data.error || 'Failed to remove account', 'error');
-        }
-      } catch (err) {
-        showStatus(`Error: ${err.message}`, 'error');
-      }
-    }
-
-    function closeModal() {
-      document.getElementById('api-key-modal').classList.remove('active');
-      currentProvider = null;
-    }
+    });
 
     // Close modal on Escape key
     document.addEventListener('keydown', function(e) {
@@ -534,11 +631,12 @@
     });
 
     // Close modal on backdrop click
-    document.getElementById('api-key-modal').addEventListener('click', function(e) {
+    document.getElementById('provider-modal').addEventListener('click', function(e) {
       if (e.target === this) closeModal();
     });
 
     // Initialize
+    populateProviderSelect();
     loadAccounts();
   </script>
 </body>
