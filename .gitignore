@@ -61,4 +61,7 @@ Desktop.ini
 
 # Config files with secrets
 config/.secret
+config/.master_key
 config/config.yaml
+config/default.json
+config/saved-configs.json

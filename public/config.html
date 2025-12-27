@@ -151,6 +151,13 @@
       <button id="refresh-health" class="icon-button" title="Refresh emulator status">&#x21bb;</button>
       <div id="status-message" class="message"></div>
     </div>
+
+    <div id="api-endpoint-info" class="section" style="display:none; margin-top: 18px; padding: 14px; background: #e0f2fe; border: 1px solid #7dd3fc; border-radius: 10px;">
+      <p style="margin: 0; font-size: 13px; color: #0369a1;">
+        <strong>API Endpoint:</strong> <code id="api-endpoint-url" style="background: #fff; padding: 4px 8px; border-radius: 4px;">http://localhost:11434/v1/chat/completions</code>
+      </p>
+      <p style="margin: 6px 0 0; font-size: 12px; color: #0c4a6e;">Point your Pinokio apps to this endpoint. Compatible with OpenAI API format.</p>
+    </div>
   </div>
 
   <script>
@@ -178,6 +185,9 @@
     var accounts = [];
     var emulatorActive = false;
     var providerOnline = false;
+    var emulatorPort = 11434;
+    var apiEndpointInfo = document.getElementById('api-endpoint-info');
+    var apiEndpointUrl = document.getElementById('api-endpoint-url');
 
     // Toggle custom emulated name input
     emulatedModelSelect.addEventListener('change', function() {
@@ -239,6 +249,12 @@
       startStopBtn.textContent = active ? 'Stop' : 'Start';
       startStopBtn.classList.toggle('danger', active);
       startStopBtn.classList.toggle('primary', !active);
+
+      // Show/hide API endpoint info
+      apiEndpointInfo.style.display = active ? 'block' : 'none';
+      if (active) {
+        apiEndpointUrl.textContent = 'http://localhost:' + emulatorPort + '/v1/chat/completions';
+      }
     }
 
     function populateAccounts() {
@@ -652,6 +668,11 @@
           providers = state.providers || [];
           models = state.models || [];
           accounts = state.accounts || [];
+
+          // Get emulator port from config
+          if (state.config && state.config.emulatorPort) {
+            emulatorPort = state.config.emulatorPort;
+          }
 
           populateAccounts();
           populateProviders();

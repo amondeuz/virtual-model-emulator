@@ -92,7 +92,8 @@ def decrypt_with_litellm(encrypted_key: str, master_key: str) -> Optional[str]:
 def get_default_config() -> Dict[str, Any]:
     """Return default configuration."""
     return {
-        "port": 11434,
+        "managementPort": 8765,  # Port for the management UI (FastAPI)
+        "emulatorPort": 11434,   # Port for the LiteLLM proxy (OpenAI-compatible API)
         "account": "",
         "provider": "openai",
         "model": "gpt-4",
