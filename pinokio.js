@@ -18,11 +18,11 @@ module.exports = {
       ];
     }
 
-    // Check if dependencies are installed (requirements.txt exists means we should try to install/run)
-    const installed = info.exists('requirements.txt');
+    // Check if dependencies are installed (env folder exists means install.js has run)
+    const installed = info.exists('env');
     if (!installed) {
       return [
-        { text: 'Loading...', icon: 'fa-solid fa-robot', href: 'install.js', default: true },
+        { text: 'Install', icon: 'fa-solid fa-download', href: 'install.js', default: true },
         updateItem
       ];
     }
