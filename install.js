@@ -1,5 +1,15 @@
 module.exports = {
   run: [
+    // Upgrade pip to latest version
+    {
+      method: "shell.run",
+      params: {
+        venv: "env",
+        message: [
+          "python -m pip install --upgrade pip"
+        ],
+      }
+    },
     // Install Python dependencies
     {
       method: "shell.run",
