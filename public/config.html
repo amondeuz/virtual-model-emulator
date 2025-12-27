@@ -1,0 +1,858 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Virtual Model Emulator</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; background: #f4f6f8; margin: 0; padding: 20px; color: #1f2933; }
+    .container { max-width: 840px; margin: 0 auto; background: #fff; border-radius: 12px; padding: 28px; box-shadow: 0 12px 40px rgba(0,0,0,0.06); }
+    h1 { margin: 0 0 6px; font-size: 24px; }
+    .muted { color: #627384; font-size: 14px; margin: 0; }
+    .section { margin-top: 18px; }
+    .step-number { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; background: #3b82f6; color: white; border-radius: 50%; font-size: 13px; font-weight: 600; margin-right: 8px; }
+    label { display: block; font-weight: 600; margin-bottom: 6px; }
+    input[type="text"], select { width: 100%; padding: 11px 12px; border: 1px solid #d9e1ec; border-radius: 10px; font-size: 14px; }
+    input:focus, select:focus { outline: none; border-color: #4a9eff; box-shadow: 0 0 0 3px rgba(74,158,255,0.15); }
+    .search-dropdown { position: relative; width: 100%; }
+    .dropdown-menu { position: absolute; top: calc(100% + 4px); left: 0; right: 0; background: #fff; border: 1px solid #d9e1ec; border-radius: 10px; box-shadow: 0 8px 20px rgba(0,0,0,0.06); max-height: 260px; overflow-y: auto; padding: 6px 0; z-index: 10; display: none; }
+    .dropdown-menu.open { display: block; }
+    .dropdown-item { padding: 10px 12px; cursor: pointer; font-size: 14px; }
+    .dropdown-item:hover { background: #f3f7ff; }
+    .dropdown-item .provider-badge { font-size: 11px; color: #627384; margin-left: 8px; }
+    .row { display: flex; gap: 10px; align-items: center; }
+    .row > *:first-child { flex: 1; }
+    button { border: none; border-radius: 10px; padding: 11px 16px; font-weight: 600; cursor: pointer; font-size: 14px; }
+    .primary { background: #4a9eff; color: white; }
+    .secondary { background: #eef2f7; color: #1f2933; }
+    .danger { background: #e35d6a; color: white; }
+    .success { background: #22c55e; color: white; }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    .status-bar { display: flex; align-items: center; gap: 10px; padding: 12px 14px; background: #f8fafc; border: 1px solid #e5ecf3; border-radius: 10px; margin-top: 22px; flex-wrap: wrap; }
+    .indicator { display: inline-flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 999px; font-weight: 600; font-size: 12px; }
+    .indicator .dot { width: 10px; height: 10px; border-radius: 50%; }
+    .online { background: #e8f7ef; color: #1b6e34; }
+    .online .dot { background: #22c55e; }
+    .offline { background: #fdf2f2; color: #b42318; }
+    .offline .dot { background: #f75555; }
+    .icon-button { background: #eef2f7; color: #1f2933; width: 36px; height: 36px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: bold; }
+    .message { flex: 1; color: #1f2933; font-size: 13px; min-height: 18px; }
+    .message.error { color: #ef4444; }
+    .pill { display: inline-block; padding: 6px 10px; border-radius: 999px; background: #eef2f7; font-size: 12px; margin-left: 6px; }
+    .hint { font-size: 12px; color: #627384; margin-top: 4px; }
+
+    /* Emulated model name section styling */
+    .emulated-section { background: #f0f7ff; border: 1px solid #bfdbfe; border-radius: 10px; padding: 16px; margin-top: 18px; }
+    .emulated-section label { color: #1e40af; }
+    .emulated-hint { font-size: 12px; color: #3b82f6; margin-top: 6px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Virtual Model Emulator</h1>
+      <p class="muted">Model name emulator powered by LiteLLM. Route any model name to any provider.</p>
+    </header>
+
+    <div class="section">
+      <label>Saved Configuration <span class="muted" style="font-weight:400">Load or save presets</span></label>
+      <div class="row">
+        <select id="preset-select">
+          <option value="">-- No preset selected --</option>
+        </select>
+        <button id="preset-action" class="secondary">Save</button>
+      </div>
+    </div>
+
+    <!-- Step 1: Account -->
+    <div class="section">
+      <label><span class="step-number">1</span> Account <span class="muted" style="font-weight:400">Which credential to use</span></label>
+      <div class="row">
+        <select id="account-select">
+          <option value="">-- Select an account --</option>
+        </select>
+        <button id="refresh-accounts" class="secondary" title="Refresh accounts list">&#x21bb;</button>
+      </div>
+      <p class="hint">Select from connected accounts. If you have multiple for the same provider, choose which credential to use.</p>
+    </div>
+
+    <!-- Step 2: Provider -->
+    <div class="section">
+      <label><span class="step-number">2</span> Provider <span class="muted" style="font-weight:400">The actual AI provider</span></label>
+      <div class="row">
+        <select id="provider-select">
+          <option value="">-- Select a provider --</option>
+        </select>
+        <button id="test-connection" class="secondary">Test Connection</button>
+      </div>
+      <p class="hint">Automatically filtered based on selected account.</p>
+    </div>
+
+    <!-- Step 3: Real Model -->
+    <div class="section">
+      <label><span class="step-number">3</span> Real Model <span class="muted" style="font-weight:400">The actual model to use</span></label>
+      <div class="row">
+        <div class="search-dropdown">
+          <input type="text" id="model-select" autocomplete="off" placeholder="Select a model...">
+          <div id="models-list" class="dropdown-menu"></div>
+        </div>
+        <button id="refresh-models" class="secondary">Refresh</button>
+      </div>
+    </div>
+
+    <!-- Step 4: Emulated Model Name -->
+    <div class="emulated-section">
+      <label><span class="step-number" style="background:#1e40af;">4</span> Emulated Model Name <span class="muted" style="font-weight:400;color:#3b82f6;">What Pinokio apps will request</span></label>
+      <select id="emulated-model-select">
+        <option value="">-- Select or enter custom --</option>
+        <optgroup label="Popular Models">
+          <option value="gpt-4">gpt-4 (OpenAI)</option>
+          <option value="gpt-4-turbo">gpt-4-turbo (OpenAI)</option>
+          <option value="gpt-3.5-turbo">gpt-3.5-turbo (OpenAI)</option>
+          <option value="claude-3-opus">claude-3-opus (Anthropic)</option>
+          <option value="claude-3-sonnet">claude-3-sonnet (Anthropic)</option>
+          <option value="claude-3-haiku">claude-3-haiku (Anthropic)</option>
+          <option value="llama3-70b">llama3-70b (Meta)</option>
+          <option value="llama3-8b">llama3-8b (Meta)</option>
+          <option value="llama3.1-405b">llama3.1-405b (Meta)</option>
+          <option value="mistral-large">mistral-large (Mistral)</option>
+          <option value="mistral-medium">mistral-medium (Mistral)</option>
+          <option value="mixtral-8x7b">mixtral-8x7b (Mistral)</option>
+          <option value="gemini-pro">gemini-pro (Google)</option>
+          <option value="gemini-1.5-pro">gemini-1.5-pro (Google)</option>
+          <option value="command-r-plus">command-r-plus (Cohere)</option>
+          <option value="command-r">command-r (Cohere)</option>
+          <option value="deepseek-coder">deepseek-coder (DeepSeek)</option>
+          <option value="qwen-72b">qwen-72b (Alibaba)</option>
+        </optgroup>
+        <option value="custom">Enter custom model name...</option>
+      </select>
+      <input type="text" id="custom-emulated-name" placeholder="Custom model name (e.g., my-model)" style="display:none; margin-top:8px;">
+      <p class="emulated-hint">
+        When a Pinokio app requests this model name, it will be routed to your configured provider/model above.
+        Leave empty to accept any model name.
+      </p>
+    </div>
+
+    <div class="section">
+      <div class="row">
+        <div></div>
+        <button id="start-stop" class="primary">Start</button>
+      </div>
+    </div>
+
+    <div class="status-bar">
+      <div id="provider-indicator" class="indicator offline">
+        <span class="dot"></span>
+        <span class="indicator-text">Provider Offline</span>
+      </div>
+      <div id="emulator-indicator" class="indicator offline">
+        <span class="dot"></span>
+        <span class="indicator-text">Emulator Stopped</span>
+      </div>
+      <button id="refresh-health" class="icon-button" title="Refresh emulator status">&#x21bb;</button>
+      <div id="status-message" class="message"></div>
+    </div>
+
+    <div id="api-endpoint-info" class="section" style="display:none; margin-top: 18px; padding: 14px; background: #e0f2fe; border: 1px solid #7dd3fc; border-radius: 10px;">
+      <p style="margin: 0; font-size: 13px; color: #0369a1;">
+        <strong>API Endpoint:</strong> <code id="api-endpoint-url" style="background: #fff; padding: 4px 8px; border-radius: 4px;">http://localhost:11434/v1/chat/completions</code>
+      </p>
+      <p style="margin: 6px 0 0; font-size: 12px; color: #0c4a6e;">Point your Pinokio apps to this endpoint. Compatible with OpenAI API format.</p>
+    </div>
+  </div>
+
+  <script>
+    var presetSelect = document.getElementById('preset-select');
+    var presetActionBtn = document.getElementById('preset-action');
+    var accountSelect = document.getElementById('account-select');
+    var providerSelect = document.getElementById('provider-select');
+    var testConnectionBtn = document.getElementById('test-connection');
+    var modelSelect = document.getElementById('model-select');
+    var modelsList = document.getElementById('models-list');
+    var refreshModelsBtn = document.getElementById('refresh-models');
+    var emulatedModelSelect = document.getElementById('emulated-model-select');
+    var customEmulatedName = document.getElementById('custom-emulated-name');
+    var startStopBtn = document.getElementById('start-stop');
+    var providerIndicatorEl = document.getElementById('provider-indicator');
+    var providerIndicatorText = providerIndicatorEl.querySelector('.indicator-text');
+    var emulatorIndicatorEl = document.getElementById('emulator-indicator');
+    var emulatorIndicatorText = emulatorIndicatorEl.querySelector('.indicator-text');
+    var refreshHealthBtn = document.getElementById('refresh-health');
+    var statusMessage = document.getElementById('status-message');
+
+    var presets = [];
+    var providers = [];
+    var models = [];
+    var accounts = [];
+    var emulatorActive = false;
+    var providerOnline = false;
+    var emulatorPort = 11434;
+    var apiEndpointInfo = document.getElementById('api-endpoint-info');
+    var apiEndpointUrl = document.getElementById('api-endpoint-url');
+    var refreshAccountsBtn = document.getElementById('refresh-accounts');
+
+    // Toggle custom emulated name input
+    emulatedModelSelect.addEventListener('change', function() {
+      if (this.value === 'custom') {
+        customEmulatedName.style.display = 'block';
+        customEmulatedName.focus();
+      } else {
+        customEmulatedName.style.display = 'none';
+      }
+    });
+
+    function getEmulatedModelName() {
+      if (emulatedModelSelect.value === 'custom') {
+        return customEmulatedName.value.trim();
+      }
+      return emulatedModelSelect.value;
+    }
+
+    function setEmulatedModelName(name) {
+      // Check if the name is in the dropdown options
+      var options = Array.from(emulatedModelSelect.options);
+      var found = options.find(function(opt) { return opt.value === name && opt.value !== 'custom'; });
+      if (found) {
+        emulatedModelSelect.value = name;
+        customEmulatedName.style.display = 'none';
+      } else if (name) {
+        emulatedModelSelect.value = 'custom';
+        customEmulatedName.value = name;
+        customEmulatedName.style.display = 'block';
+      } else {
+        emulatedModelSelect.value = '';
+        customEmulatedName.style.display = 'none';
+      }
+    }
+
+    function setMessage(text) {
+      statusMessage.textContent = text || '';
+      statusMessage.classList.remove('error');
+    }
+
+    function showError(message) {
+      statusMessage.textContent = 'Error: ' + message;
+      statusMessage.classList.add('error');
+    }
+
+    function setProviderIndicator(online, providerName) {
+      providerName = providerName || 'Provider';
+      providerOnline = online;
+      providerIndicatorEl.classList.toggle('online', online);
+      providerIndicatorEl.classList.toggle('offline', !online);
+      providerIndicatorText.textContent = online ? (providerName + ' Online') : (providerName + ' Offline');
+    }
+
+    function setEmulatorIndicator(active) {
+      emulatorActive = active;
+      emulatorIndicatorEl.classList.toggle('online', active);
+      emulatorIndicatorEl.classList.toggle('offline', !active);
+      emulatorIndicatorText.textContent = active ? 'Emulator Running' : 'Emulator Stopped';
+      startStopBtn.textContent = active ? 'Stop' : 'Start';
+      startStopBtn.classList.toggle('danger', active);
+      startStopBtn.classList.toggle('primary', !active);
+
+      // Show/hide API endpoint info
+      apiEndpointInfo.style.display = active ? 'block' : 'none';
+      if (active) {
+        apiEndpointUrl.textContent = 'http://localhost:' + emulatorPort + '/v1/chat/completions';
+      }
+    }
+
+    function populateAccounts() {
+      accountSelect.innerHTML = '<option value="">-- Select an account --</option>';
+
+      // Group accounts by provider for display
+      var byProvider = {};
+      accounts.forEach(function(acc) {
+        if (!byProvider[acc.provider]) {
+          byProvider[acc.provider] = [];
+        }
+        byProvider[acc.provider].push(acc);
+      });
+
+      // Create options grouped by provider
+      Object.keys(byProvider).forEach(function(provId) {
+        var provider = providers.find(function(p) { return p.id === provId; });
+        var providerName = provider ? provider.name : provId;
+
+        byProvider[provId].forEach(function(acc) {
+          var opt = document.createElement('option');
+          opt.value = acc.accountName + '|' + acc.provider;
+          opt.textContent = acc.accountName + ' (' + providerName + ')';
+          accountSelect.appendChild(opt);
+        });
+      });
+
+      // Also add providers with env var keys
+      providers.forEach(function(provider) {
+        if (provider.hasApiKey && !byProvider[provider.id]) {
+          var opt = document.createElement('option');
+          opt.value = '|' + provider.id;  // Empty account name, just provider
+          opt.textContent = provider.name + ' (env: ' + provider.envVar + ')';
+          accountSelect.appendChild(opt);
+        }
+      });
+    }
+
+    function populateProviders() {
+      providerSelect.innerHTML = '<option value="">-- Select a provider --</option>';
+
+      // Get selected account
+      var selectedValue = accountSelect.value;
+      var parts = selectedValue.split('|');
+      var selectedProvider = parts[1] || '';
+
+      // Filter providers based on selected account
+      providers.forEach(function(provider) {
+        // If an account is selected, only show that provider
+        if (selectedProvider && provider.id !== selectedProvider) {
+          return;
+        }
+        // Only show providers that are connected
+        if (!provider.hasApiKey && !accounts.some(function(a) { return a.provider === provider.id; })) {
+          return;
+        }
+
+        var opt = document.createElement('option');
+        opt.value = provider.id;
+        opt.textContent = provider.name;
+        providerSelect.appendChild(opt);
+      });
+
+      // Auto-select if only one option
+      if (providerSelect.options.length === 2) {
+        providerSelect.selectedIndex = 1;
+      }
+    }
+
+    function getFilteredModels(query) {
+      query = query || '';
+      var providerId = providerSelect.value;
+      var lower = query.trim().toLowerCase();
+
+      return models
+        .filter(function(model) { return !providerId || model.provider === providerId; })
+        .filter(function(model) {
+          if (!lower) return true;
+          var label = model.label || model.id;
+          return label.toLowerCase().indexOf(lower) !== -1 || model.id.toLowerCase().indexOf(lower) !== -1;
+        });
+    }
+
+    function renderDropdown(listEl, options, onSelect) {
+      listEl.innerHTML = '';
+      options.forEach(function(option) {
+        var item = document.createElement('div');
+        item.className = 'dropdown-item';
+        var label = option.label || option.id || '';
+        var providerBadge = option.providerName ? '<span class="provider-badge">' + option.providerName + '</span>' : '';
+        item.innerHTML = label + providerBadge;
+        item.addEventListener('click', function() {
+          onSelect(option);
+          listEl.classList.remove('open');
+        });
+        listEl.appendChild(item);
+      });
+      if (options.length === 0) {
+        var empty = document.createElement('div');
+        empty.className = 'dropdown-item';
+        empty.textContent = 'No models available';
+        empty.style.color = '#627384';
+        empty.style.cursor = 'default';
+        listEl.appendChild(empty);
+      }
+    }
+
+    function setupSearchDropdown(inputEl, listEl, getOptions, onSelect) {
+      var open = false;
+
+      function openMenu() {
+        listEl.classList.add('open');
+        open = true;
+      }
+
+      function closeMenu() {
+        listEl.classList.remove('open');
+        open = false;
+      }
+
+      function refreshOptions() {
+        renderDropdown(listEl, getOptions(inputEl.value), onSelect);
+      }
+
+      inputEl.addEventListener('input', function() {
+        refreshOptions();
+        openMenu();
+      });
+
+      inputEl.addEventListener('click', function(e) {
+        if (open) {
+          closeMenu();
+        } else {
+          refreshOptions();
+          openMenu();
+        }
+        e.stopPropagation();
+      });
+
+      listEl.addEventListener('click', function(e) {
+        e.stopPropagation();
+      });
+
+      document.addEventListener('click', function() {
+        if (open) closeMenu();
+      });
+
+      return { refreshOptions: refreshOptions, closeMenu: closeMenu };
+    }
+
+    function populatePresets(selectedId) {
+      presetSelect.innerHTML = '<option value="">-- No preset selected --</option>';
+      presets.forEach(function(preset) {
+        var opt = document.createElement('option');
+        opt.value = preset.id;
+        opt.textContent = preset.name;
+        presetSelect.appendChild(opt);
+      });
+
+      if (selectedId) {
+        presetSelect.value = selectedId;
+      }
+
+      presetActionBtn.textContent = presetSelect.value ? 'Edit' : 'Save';
+    }
+
+    function applyPreset(presetId) {
+      var preset = presets.find(function(p) { return p.id === presetId; });
+      if (!preset) return;
+
+      // Set account if available
+      if (preset.account && preset.provider) {
+        accountSelect.value = preset.account + '|' + preset.provider;
+      } else if (preset.provider) {
+        accountSelect.value = '|' + preset.provider;
+      }
+
+      // Trigger account change to filter providers
+      populateProviders();
+
+      providerSelect.value = preset.provider || '';
+      modelSelect.value = preset.model || '';
+      setEmulatedModelName(preset.emulatedModelName || '');
+
+      modelDropdown.refreshOptions();
+      presetActionBtn.textContent = 'Edit';
+      setMessage('Loaded preset "' + preset.name + '"');
+    }
+
+    function fetchState(force) {
+      var url = '/config/state' + (force ? '?force=true' : '');
+      return fetch(url).then(function(res) {
+        if (!res.ok) throw new Error('Failed to load state');
+        return res.json();
+      });
+    }
+
+    function saveConfig() {
+      var accountValue = accountSelect.value;
+      var parts = accountValue.split('|');
+      var accountName = parts[0] || '';
+      var providerId = parts[1] || providerSelect.value;
+
+      var body = {
+        account: accountName,
+        provider: providerId,
+        model: modelSelect.value,
+        emulatedModelName: getEmulatedModelName(),
+        apiKeyEnvVar: ''  // Will be resolved by get_api_key
+      };
+      return fetch('/config/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+    }
+
+    function handleStartStop() {
+      var accountValue = accountSelect.value;
+      var parts = accountValue.split('|');
+      var accountName = parts[0] || '';
+      var provider = providerSelect.value;
+      var model = modelSelect.value;
+      var emulatedModelName = getEmulatedModelName();
+
+      if (!provider) {
+        setMessage('Select a provider first.');
+        return;
+      }
+      if (!model) {
+        setMessage('Select a model first.');
+        return;
+      }
+
+      startStopBtn.disabled = true;
+      startStopBtn.textContent = emulatorActive ? 'Stopping...' : 'Starting...';
+
+      if (emulatorActive) {
+        fetch('/emulator/stop', { method: 'POST' })
+          .then(function(res) { return res.json(); })
+          .then(function(data) {
+            if (data.success) {
+              setEmulatorIndicator(false);
+              setMessage('Emulator stopped.');
+            } else {
+              showError(data.error || 'Failed to stop emulator.');
+            }
+          })
+          .catch(function(err) {
+            showError(err.message);
+            setEmulatorIndicator(false);
+          })
+          .finally(function() {
+            startStopBtn.disabled = false;
+          });
+      } else {
+        saveConfig()
+          .then(function() {
+            return fetch('/emulator/start', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                account: accountName,
+                provider: provider,
+                model: model,
+                emulatedModelName: emulatedModelName,
+                apiKeyEnvVar: ''
+              })
+            });
+          })
+          .then(function(res) { return res.json(); })
+          .then(function(data) {
+            if (data.success) {
+              setEmulatorIndicator(true);
+              var providerInfo = providers.find(function(p) { return p.id === provider; });
+              setProviderIndicator(true, providerInfo ? providerInfo.name : provider);
+              var emulatedInfo = emulatedModelName ? ' (emulating "' + emulatedModelName + '")' : '';
+              setMessage('Emulator started' + emulatedInfo + '.');
+            } else {
+              showError(data.error || 'Failed to start emulator.');
+              setEmulatorIndicator(false);
+            }
+          })
+          .catch(function(err) {
+            showError(err.message);
+            setEmulatorIndicator(false);
+          })
+          .finally(function() {
+            startStopBtn.disabled = false;
+          });
+      }
+    }
+
+    function testConnection() {
+      var provider = providerSelect.value;
+      if (!provider) {
+        setMessage('Select a provider first.');
+        return;
+      }
+
+      var accountValue = accountSelect.value;
+      var parts = accountValue.split('|');
+      var accountName = parts[0] || '';
+
+      if (!accountName) {
+        setMessage('Select an account first.');
+        return;
+      }
+
+      testConnectionBtn.disabled = true;
+      testConnectionBtn.textContent = 'Testing...';
+
+      fetch('/providers/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider: provider, accountName: accountName })
+      })
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+          var providerInfo = providers.find(function(p) { return p.id === provider; });
+          if (data.success) {
+            setProviderIndicator(true, providerInfo ? providerInfo.name : provider);
+            setMessage(data.message || 'Connection successful.');
+          } else {
+            setProviderIndicator(false, providerInfo ? providerInfo.name : provider);
+            showError(data.error || 'Connection test failed.');
+          }
+        })
+        .catch(function(err) {
+          setProviderIndicator(false);
+          showError('Connection test failed: ' + err.message);
+        })
+        .finally(function() {
+          testConnectionBtn.disabled = false;
+          testConnectionBtn.textContent = 'Test Connection';
+        });
+    }
+
+    function fetchModelsFromProvider(force) {
+      var accountValue = accountSelect.value;
+      var parts = accountValue.split('|');
+      var accountName = parts[0] || '';
+      var provider = providerSelect.value || parts[1] || '';
+
+      if (!accountName || !provider) {
+        models = [];
+        modelDropdown.refreshOptions();
+        return Promise.resolve();
+      }
+
+      refreshModelsBtn.disabled = true;
+      setMessage('Fetching models...');
+
+      return fetch('/providers/models/fetch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider: provider,
+          accountName: accountName,
+          force: force || false
+        })
+      })
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+          if (data.success) {
+            models = (data.models || []).map(function(m) {
+              return { id: m.id, label: m.label, provider: provider };
+            });
+            modelDropdown.refreshOptions();
+            var cached = data.cached ? ' (cached)' : '';
+            setMessage('Loaded ' + models.length + ' models' + cached);
+          } else {
+            models = [];
+            modelDropdown.refreshOptions();
+            showError(data.error || 'Failed to fetch models');
+          }
+        })
+        .catch(function(err) {
+          models = [];
+          modelDropdown.refreshOptions();
+          showError('Failed to fetch models: ' + err.message);
+        })
+        .finally(function() {
+          refreshModelsBtn.disabled = false;
+        });
+    }
+
+    function refreshModels(force) {
+      fetchModelsFromProvider(force);
+    }
+
+    function refreshHealth() {
+      // Use the new /emulator/status endpoint for comprehensive status
+      fetch('/emulator/status')
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+          var providerName = data.currentConfig ? data.currentConfig.providerName : 'Provider';
+          setProviderIndicator(data.providerOnline === true, providerName);
+          setEmulatorIndicator(data.emulatorRunning === true);
+
+          var statusMsg = data.emulatorRunning ? 'Emulator running' : 'Emulator stopped';
+          if (data.currentConfig && data.currentConfig.emulatedModelName) {
+            statusMsg += ' (emulating "' + data.currentConfig.emulatedModelName + '")';
+          }
+          setMessage(statusMsg);
+        })
+        .catch(function(err) {
+          setProviderIndicator(false);
+          setEmulatorIndicator(false);
+          showError('Unable to get status: ' + err.message);
+        });
+    }
+
+    function savePreset(existingId) {
+      var name = prompt(existingId ? 'Rename preset' : 'Preset name');
+      if (!name) return;
+
+      var accountValue = accountSelect.value;
+      var parts = accountValue.split('|');
+      var accountName = parts[0] || '';
+
+      var body = {
+        id: existingId || undefined,
+        name: name.trim(),
+        account: accountName,
+        provider: providerSelect.value,
+        model: modelSelect.value,
+        emulatedModelName: getEmulatedModelName(),
+        apiKeyEnvVar: ''
+      };
+
+      fetch('/config/savePreset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      })
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+          if (data.success) {
+            if (existingId) {
+              presets = presets.map(function(p) { return p.id === existingId ? data.preset : p; });
+              populatePresets(existingId);
+              setMessage('Preset updated.');
+            } else {
+              presets.push(data.preset);
+              populatePresets(data.preset.id);
+              setMessage('Preset saved.');
+            }
+          } else {
+            showError(data.error || 'Failed to save preset.');
+          }
+        })
+        .catch(function(err) {
+          showError('Failed to save preset: ' + err.message);
+        });
+    }
+
+    function init() {
+      fetchState(false)
+        .then(function(state) {
+          presets = state.presets || [];
+          providers = state.providers || [];
+          models = state.models || [];
+          accounts = state.accounts || [];
+
+          // Get emulator port from config
+          if (state.config && state.config.emulatorPort) {
+            emulatorPort = state.config.emulatorPort;
+          }
+
+          populateAccounts();
+          populateProviders();
+          populatePresets();
+
+          if (state.config) {
+            // Set account selection
+            if (state.config.account && state.config.provider) {
+              accountSelect.value = state.config.account + '|' + state.config.provider;
+            } else if (state.config.provider) {
+              // Try to find matching env-based option
+              accountSelect.value = '|' + state.config.provider;
+            }
+
+            // Update provider dropdown based on account
+            populateProviders();
+
+            providerSelect.value = state.config.provider || '';
+            modelSelect.value = state.config.model || '';
+            setEmulatedModelName(state.config.emulatedModelName || '');
+          }
+
+          setEmulatorIndicator(state.emulatorActive);
+
+          var currentProvider = providers.find(function(p) { return p.id === providerSelect.value; });
+          setProviderIndicator(state.providerOnline !== false, currentProvider ? currentProvider.name : 'Provider');
+
+          // Fetch models if account is selected
+          if (accountSelect.value) {
+            fetchModelsFromProvider(false).then(function() {
+              // Restore model selection after fetching
+              if (state.config && state.config.model) {
+                modelSelect.value = state.config.model;
+              }
+            });
+          } else {
+            modelDropdown.refreshOptions();
+            setMessage('Ready.');
+          }
+          return refreshHealth();
+        })
+        .catch(function(err) {
+          showError('Failed to load state: ' + err.message);
+        });
+    }
+
+    // Tab visibility refresh
+    document.addEventListener('visibilitychange', function() {
+      if (!document.hidden) {
+        fetchState(false).then(function(state) {
+          accounts = state.accounts || [];
+          providers = state.providers || [];
+          populateAccounts();
+          populateProviders();
+          refreshHealth();
+        });
+      }
+    });
+
+    // Event listeners
+    presetSelect.addEventListener('change', function() {
+      if (presetSelect.value) {
+        applyPreset(presetSelect.value);
+      }
+      presetActionBtn.textContent = presetSelect.value ? 'Edit' : 'Save';
+    });
+
+    presetActionBtn.addEventListener('click', function() {
+      if (presetSelect.value) {
+        savePreset(presetSelect.value);
+      } else {
+        savePreset();
+      }
+    });
+
+    accountSelect.addEventListener('change', function() {
+      // When account changes, update provider dropdown
+      populateProviders();
+
+      // Auto-select the provider from the account
+      var parts = accountSelect.value.split('|');
+      var provId = parts[1];
+      if (provId) {
+        providerSelect.value = provId;
+      }
+
+      // Clear model selection and fetch models from provider
+      modelSelect.value = '';
+      fetchModelsFromProvider(false);
+    });
+
+    providerSelect.addEventListener('change', function() {
+      modelSelect.value = '';
+      fetchModelsFromProvider(false);
+    });
+
+    testConnectionBtn.addEventListener('click', testConnection);
+    refreshModelsBtn.addEventListener('click', function() { refreshModels(true); });
+    startStopBtn.addEventListener('click', handleStartStop);
+    refreshHealthBtn.addEventListener('click', refreshHealth);
+    refreshAccountsBtn.addEventListener('click', function() {
+      refreshAccountsBtn.disabled = true;
+      fetchState(false).then(function(state) {
+        accounts = state.accounts || [];
+        providers = state.providers || [];
+        populateAccounts();
+        populateProviders();
+        setMessage('Accounts refreshed.');
+      }).catch(function(err) {
+        showError('Failed to refresh accounts');
+      }).finally(function() {
+        refreshAccountsBtn.disabled = false;
+      });
+    });
+
+    var modelDropdown = setupSearchDropdown(
+      modelSelect,
+      modelsList,
+      function(query) { return getFilteredModels(query); },
+      function(option) {
+        modelSelect.value = option.id || '';
+      }
+    );
+
+    init();
+  </script>
+</body>
+</html>
