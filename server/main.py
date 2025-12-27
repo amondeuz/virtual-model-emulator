@@ -478,7 +478,7 @@ async def get_provider_models(provider: Optional[str] = Query(None)):
 @app.post("/providers/models/fetch")
 async def fetch_provider_models(request: Request):
     """Fetch models directly from provider API with caching."""
-    global _models_cache, _models_cache_time
+    global _models_cache
 
     body = await request.json()
     provider = body.get("provider", "").strip()
