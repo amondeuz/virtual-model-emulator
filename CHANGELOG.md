@@ -1,5 +1,39 @@
 # Changelog
 
+## [2.0.0-beta.6] - 2025-12-27
+
+### Breaking Changes
+- **BREAKING**: Removed custom FastAPI server - now runs LiteLLM proxy directly
+- **BREAKING**: Removed Connect tab and accounts system - API keys entered when adding models
+- **BREAKING**: Removed API key encryption - keys sent directly to LiteLLM (stored server-side)
+
+### Added
+- Simple static file server (`server.py`) for serving UI
+- Provider dropdown with links to get API keys
+- API key input field when adding models (not stored in browser)
+
+### Changed
+- Architecture simplified: just LiteLLM proxy + static file server
+- `config.html` completely rewritten for direct LiteLLM API calls
+- Uses `litellm[proxy]` package (includes all proxy dependencies like `backoff`)
+- API keys sent directly to LiteLLM `/model/new` endpoint, never stored in localStorage
+- 4-step flow: Provider → Model → API Key → Emulated Name
+
+### Removed
+- `server/` directory (main.py, config.py) - no longer needed
+- `public/connect.html` - accounts system removed
+- `config/` directory (accounts.json, .secret, saved-configs.json)
+- Fernet encryption system - LiteLLM handles key storage
+- Account-based credential management
+- All custom API endpoints (/providers/*, /emulator/*, /config/*)
+
+### Security
+- API keys no longer stored in browser localStorage
+- Keys entered per-model and sent directly to LiteLLM server-side storage
+
+### Fixed
+- `ModuleNotFoundError: No module named 'backoff'` - now uses `litellm[proxy]`
+
 ## [2.0.0-beta.5] - 2025-12-26
 
 ### Fixed
