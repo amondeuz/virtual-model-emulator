@@ -8,12 +8,12 @@ module.exports = {
   description,
   icon,
   menu: async (kernel, info) => {
-    const updateItem = { text: 'Update', icon: 'fa-solid fa-rotate', href: 'update.json' };
+    const updateItem = { text: 'Update', icon: 'fa-solid fa-rotate', href: 'update.js' };
 
-    const installing = info.running('install.json');
+    const installing = info.running('install.js');
     if (installing) {
       return [
-        { text: 'Loading...', icon: 'fa-solid fa-robot', href: 'install.json' },
+        { text: 'Loading...', icon: 'fa-solid fa-robot', href: 'install.js' },
         updateItem
       ];
     }
@@ -22,25 +22,25 @@ module.exports = {
     const installed = info.exists('requirements.txt');
     if (!installed) {
       return [
-        { text: 'Loading...', icon: 'fa-solid fa-robot', href: 'install.json', default: true },
+        { text: 'Loading...', icon: 'fa-solid fa-robot', href: 'install.js', default: true },
         updateItem
       ];
     }
 
-    const starting = info.running('start.json');
+    const starting = info.running('start.js');
     if (!starting) {
       return [
-        { text: 'Starting...', icon: 'fa-solid fa-robot', href: 'start.json', default: true },
+        { text: 'Starting...', icon: 'fa-solid fa-robot', href: 'start.js', default: true },
         updateItem
       ];
     }
 
-    const mem = info.local('start.json');
+    const mem = info.local('start.js');
     const url = mem && mem.url;
 
     if (!url) {
       return [
-        { text: 'Starting...', icon: 'fa-solid fa-robot', href: 'start.json' },
+        { text: 'Starting...', icon: 'fa-solid fa-robot', href: 'start.js' },
         updateItem
       ];
     }
