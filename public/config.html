@@ -68,9 +68,12 @@
     <!-- Step 1: Account -->
     <div class="section">
       <label><span class="step-number">1</span> Account <span class="muted" style="font-weight:400">Which credential to use</span></label>
-      <select id="account-select">
-        <option value="">-- Select an account --</option>
-      </select>
+      <div class="row">
+        <select id="account-select">
+          <option value="">-- Select an account --</option>
+        </select>
+        <button id="refresh-accounts" class="secondary" title="Refresh accounts list">&#x21bb;</button>
+      </div>
       <p class="hint">Select from connected accounts. If you have multiple for the same provider, choose which credential to use.</p>
     </div>
 
@@ -188,6 +191,69 @@
     var emulatorPort = 11434;
     var apiEndpointInfo = document.getElementById('api-endpoint-info');
     var apiEndpointUrl = document.getElementById('api-endpoint-url');
+    var refreshAccountsBtn = document.getElementById('refresh-accounts');
+
+    // Static model lists per provider (used when LiteLLM proxy isn't running)
+    var STATIC_MODELS = {
+      openai: [
+        { id: 'gpt-4o', label: 'GPT-4o' },
+        { id: 'gpt-4o-mini', label: 'GPT-4o Mini' },
+        { id: 'gpt-4-turbo', label: 'GPT-4 Turbo' },
+        { id: 'gpt-4', label: 'GPT-4' },
+        { id: 'gpt-3.5-turbo', label: 'GPT-3.5 Turbo' },
+        { id: 'o1-preview', label: 'o1 Preview' },
+        { id: 'o1-mini', label: 'o1 Mini' }
+      ],
+      anthropic: [
+        { id: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet' },
+        { id: 'claude-3-5-haiku-20241022', label: 'Claude 3.5 Haiku' },
+        { id: 'claude-3-opus-20240229', label: 'Claude 3 Opus' },
+        { id: 'claude-3-sonnet-20240229', label: 'Claude 3 Sonnet' },
+        { id: 'claude-3-haiku-20240307', label: 'Claude 3 Haiku' }
+      ],
+      groq: [
+        { id: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B' },
+        { id: 'llama-3.1-8b-instant', label: 'Llama 3.1 8B' },
+        { id: 'mixtral-8x7b-32768', label: 'Mixtral 8x7B' },
+        { id: 'gemma2-9b-it', label: 'Gemma 2 9B' }
+      ],
+      mistral: [
+        { id: 'mistral-large-latest', label: 'Mistral Large' },
+        { id: 'mistral-medium-latest', label: 'Mistral Medium' },
+        { id: 'mistral-small-latest', label: 'Mistral Small' },
+        { id: 'codestral-latest', label: 'Codestral' }
+      ],
+      google: [
+        { id: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro' },
+        { id: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash' },
+        { id: 'gemini-pro', label: 'Gemini Pro' }
+      ],
+      cohere: [
+        { id: 'command-r-plus', label: 'Command R+' },
+        { id: 'command-r', label: 'Command R' },
+        { id: 'command', label: 'Command' }
+      ],
+      together_ai: [
+        { id: 'meta-llama/Llama-3.3-70B-Instruct-Turbo', label: 'Llama 3.3 70B Instruct' },
+        { id: 'meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo', label: 'Llama 3.1 405B' },
+        { id: 'mistralai/Mixtral-8x22B-Instruct-v0.1', label: 'Mixtral 8x22B' },
+        { id: 'Qwen/Qwen2.5-72B-Instruct-Turbo', label: 'Qwen 2.5 72B' }
+      ],
+      openrouter: [
+        { id: 'openai/gpt-4o', label: 'GPT-4o (via OpenRouter)' },
+        { id: 'anthropic/claude-3.5-sonnet', label: 'Claude 3.5 Sonnet (via OpenRouter)' },
+        { id: 'google/gemini-pro-1.5', label: 'Gemini 1.5 Pro (via OpenRouter)' },
+        { id: 'meta-llama/llama-3.1-405b-instruct', label: 'Llama 3.1 405B (via OpenRouter)' }
+      ],
+      deepseek: [
+        { id: 'deepseek-chat', label: 'DeepSeek Chat' },
+        { id: 'deepseek-coder', label: 'DeepSeek Coder' }
+      ],
+      cerebras: [
+        { id: 'llama3.1-8b', label: 'Llama 3.1 8B' },
+        { id: 'llama3.1-70b', label: 'Llama 3.1 70B' }
+      ]
+    };
 
     // Toggle custom emulated name input
     emulatedModelSelect.addEventListener('change', function() {
@@ -329,7 +395,15 @@
       var providerId = providerSelect.value;
       var lower = query.trim().toLowerCase();
 
-      return models
+      // Use static models if no models loaded from LiteLLM and provider is selected
+      var sourceModels = models;
+      if (sourceModels.length === 0 && providerId && STATIC_MODELS[providerId]) {
+        sourceModels = STATIC_MODELS[providerId].map(function(m) {
+          return { id: m.id, label: m.label, provider: providerId };
+        });
+      }
+
+      return sourceModels
         .filter(function(model) { return !providerId || model.provider === providerId; })
         .filter(function(model) {
           if (!lower) return true;
@@ -555,15 +629,33 @@
         return;
       }
 
+      var accountValue = accountSelect.value;
+      var parts = accountValue.split('|');
+      var accountName = parts[0] || '';
+
+      if (!accountName) {
+        setMessage('Select an account first.');
+        return;
+      }
+
       testConnectionBtn.disabled = true;
       testConnectionBtn.textContent = 'Testing...';
 
-      fetch('/health')
+      fetch('/providers/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider: provider, accountName: accountName })
+      })
         .then(function(res) { return res.json(); })
         .then(function(data) {
           var providerInfo = providers.find(function(p) { return p.id === provider; });
-          setProviderIndicator(data.online === true, providerInfo ? providerInfo.name : provider);
-          setMessage(data.message || 'Connection tested.');
+          if (data.success) {
+            setProviderIndicator(true, providerInfo ? providerInfo.name : provider);
+            setMessage(data.message || 'Connection successful.');
+          } else {
+            setProviderIndicator(false, providerInfo ? providerInfo.name : provider);
+            showError(data.error || 'Connection test failed.');
+          }
         })
         .catch(function(err) {
           setProviderIndicator(false);
@@ -763,6 +855,20 @@
     refreshModelsBtn.addEventListener('click', function() { refreshModels(true); });
     startStopBtn.addEventListener('click', handleStartStop);
     refreshHealthBtn.addEventListener('click', refreshHealth);
+    refreshAccountsBtn.addEventListener('click', function() {
+      refreshAccountsBtn.disabled = true;
+      fetchState(false).then(function(state) {
+        accounts = state.accounts || [];
+        providers = state.providers || [];
+        populateAccounts();
+        populateProviders();
+        setMessage('Accounts refreshed.');
+      }).catch(function(err) {
+        showError('Failed to refresh accounts');
+      }).finally(function() {
+        refreshAccountsBtn.disabled = false;
+      });
+    });
 
     var modelDropdown = setupSearchDropdown(
       modelSelect,
