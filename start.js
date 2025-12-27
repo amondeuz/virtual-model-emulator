@@ -1,21 +1,20 @@
 module.exports = {
-  "daemon": true,
-  "run": [
+  daemon: true,
+  run: [
     {
-      "method": "log",
-      "params": {
-        "raw": "Starting Virtual Model Emulator..."
+      method: "log",
+      params: {
+        raw: "Starting Virtual Model Emulator..."
       }
     },
     {
-      "method": "shell.run",
-      "params": {
-        // This line must be changed. Use the venv parameter correctly.
-        "message": "python -m server.main",
-        "venv": "env", // Pinokio will now use the venv's Python
-        "on": [
+      method: "shell.run",
+      params: {
+        // Change this line to use the venv's Python directly
+        message: ".\\env\\Scripts\\python -m server.main",
+        // Remove the "venv": "env" line entirely
+        on: [
           {
-            // Keep your PINOKIO_STARTUP regex.
             "event": "/PINOKIO_STARTUP: (http:\\/\\/localhost:[0-9]+\\/config\\.html)/",
             "done": true
           }
@@ -23,15 +22,15 @@ module.exports = {
       }
     },
     {
-      "method": "local.set",
-      "params": {
-        "url": "{{input.event[1]}}"
+      method: "local.set",
+      params: {
+        url: "{{input.event[1]}}"
       }
     },
     {
-      "method": "log",
-      "params": {
-        "raw": "UI ready at {{input.event[1]}}"
+      method: "log",
+      params: {
+        raw: "UI ready at {{input.event[1]}}"
       }
     }
   ]
