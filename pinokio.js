@@ -41,7 +41,8 @@ module.exports = {
     }
 
     return [
-      { text: 'Open UI', icon: 'fa-solid fa-robot', href: url, default: true },
+      { text: 'Connect', icon: 'fa-solid fa-plug', href: url.replace('config.html', 'connect.html') },
+      { text: 'Emulator', icon: 'fa-solid fa-robot', href: url, default: true },
       updateItem
     ];
   }
