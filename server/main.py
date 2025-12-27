@@ -20,7 +20,7 @@ from fastapi.staticfiles import StaticFiles
 import httpx
 import uvicorn
 
-from config import (
+from .config import (
     get_config, update_config, get_accounts, add_account, remove_account,
     get_saved_configs, add_saved_config, update_saved_config, delete_saved_config,
     get_saved_config_by_id, generate_litellm_config,
@@ -86,8 +86,20 @@ def start_litellm_proxy(port: int = 11434) -> bool:
     
     # Start LiteLLM proxy
     try:
+        # Find litellm executable - prefer the one in the same directory as Python
+        import shutil
+        litellm_path = shutil.which("litellm")
+        if not litellm_path:
+            # Try to find it in the venv's bin/Scripts directory
+            venv_litellm = Path(sys.executable).parent / "litellm"
+            if venv_litellm.exists():
+                litellm_path = str(venv_litellm)
+            else:
+                print("[ERROR] litellm executable not found", flush=True)
+                return False
+
         cmd = [
-            sys.executable, "-m", "litellm",
+            litellm_path,
             "--config", str(LITELLM_CONFIG_PATH),
             "--port", str(port),
             "--host", "127.0.0.1"
@@ -174,8 +186,10 @@ def is_emulator_running() -> bool:
 async def fetch_litellm_models() -> List[Dict[str, Any]]:
     """Fetch models from LiteLLM /v1/models endpoint."""
     try:
+        config = get_config()
+        emulator_port = config.get("emulatorPort", 11434)
         async with httpx.AsyncClient() as client:
-            response = await client.get("http://localhost:11434/v1/models", timeout=5.0)
+            response = await client.get(f"http://localhost:{emulator_port}/v1/models", timeout=5.0)
             if response.status_code == 200:
                 return response.json().get("data", [])
     except Exception:
@@ -188,18 +202,19 @@ async def fetch_litellm_models() -> List[Dict[str, Any]]:
 async def lifespan(app: FastAPI):
     """Handle startup and shutdown events."""
     config = get_config()
-    port = int(os.environ.get("PORT", config.get("port", 11434)))
-    
-    print(f"[INFO] Virtual Model Emulator started on http://localhost:{port}", flush=True)
-    print(f"PINOKIO_STARTUP: http://localhost:{port}/config.html", flush=True)
-    print(f"[INFO] Connect UI: http://localhost:{port}/connect.html", flush=True)
-    print(f"[INFO] LiteLLM API: http://localhost:{port}/v1/chat/completions", flush=True)
-    
+    management_port = config.get("managementPort", 8765)
+    emulator_port = config.get("emulatorPort", 11434)
+
+    print(f"[INFO] Virtual Model Emulator Management UI on http://localhost:{management_port}", flush=True)
+    print(f"PINOKIO_STARTUP: http://localhost:{management_port}/config.html", flush=True)
+    print(f"[INFO] Connect UI: http://localhost:{management_port}/connect.html", flush=True)
+    print(f"[INFO] LiteLLM API will be available on: http://localhost:{emulator_port}/v1/chat/completions", flush=True)
+
     # Ensure config directory exists
     CONFIG_DIR.mkdir(exist_ok=True)
-    
+
     yield
-    
+
     # Cleanup on shutdown
     stop_litellm_proxy()
     print("[INFO] Shutting down...", flush=True)
@@ -529,11 +544,11 @@ async def emulator_start(request: Request):
     
     # Regenerate config and start proxy
     generate_litellm_config()
-    
+
     config = get_config()
-    port = int(os.environ.get("PORT", config.get("port", 11434)))
-    
-    if start_litellm_proxy(port):
+    emulator_port = config.get("emulatorPort", 11434)
+
+    if start_litellm_proxy(emulator_port):
         emulated_info = f" (emulating '{emulated_model_name}')" if emulated_model_name else ""
         account_info = f" using account '{account}'" if account else ""
         print(f"[INFO] Emulator started: {provider}/{model}{emulated_info}{account_info}", flush=True)
@@ -646,26 +661,20 @@ app.mount("/", StaticFiles(directory=str(PUBLIC_DIR), html=True), name="static")
 
 def main():
     """Main entry point."""
-    import sys
-    import os
-    
-    # Add the parent directory to Python path
-    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-    
-    # Get port from config - WITHOUT dotenv
-    from config import get_config
+    # Get port from config
     config = get_config()
-    port = config.get("port", 11434)  # Remove os.environ.get() call
-    
-    print(f"[INFO] Starting Virtual Model Emulator on http://localhost:{port}")
-    print(f"[INFO] Config UI: http://localhost:{port}/config.html")
-    print(f"[INFO] Connect UI: http://localhost:{port}/connect.html")
-    print(f"[INFO] LiteLLM API: http://localhost:{port}/v1/chat/completions")
-    
+    management_port = config.get("managementPort", 8765)
+    emulator_port = config.get("emulatorPort", 11434)
+
+    print(f"[INFO] Starting Virtual Model Emulator")
+    print(f"[INFO] Management UI: http://localhost:{management_port}/config.html")
+    print(f"[INFO] Connect UI: http://localhost:{management_port}/connect.html")
+    print(f"[INFO] LiteLLM API (when started): http://localhost:{emulator_port}/v1/chat/completions")
+
     uvicorn.run(
         app,
         host="127.0.0.1",
-        port=port,
+        port=management_port,
         log_level="info",
         reload=False
     )
