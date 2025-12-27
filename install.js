@@ -19,7 +19,7 @@ module.exports = {
       params: {
         venv: "env",                // Edit this to customize the venv folder path
         message: [
-          "uv pip install -r requirements.txt"
+          "pip install -r requirements.txt"
         ],
       }
     },
