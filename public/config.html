@@ -193,68 +193,6 @@
     var apiEndpointUrl = document.getElementById('api-endpoint-url');
     var refreshAccountsBtn = document.getElementById('refresh-accounts');
 
-    // Static model lists per provider (used when LiteLLM proxy isn't running)
-    var STATIC_MODELS = {
-      openai: [
-        { id: 'gpt-4o', label: 'GPT-4o' },
-        { id: 'gpt-4o-mini', label: 'GPT-4o Mini' },
-        { id: 'gpt-4-turbo', label: 'GPT-4 Turbo' },
-        { id: 'gpt-4', label: 'GPT-4' },
-        { id: 'gpt-3.5-turbo', label: 'GPT-3.5 Turbo' },
-        { id: 'o1-preview', label: 'o1 Preview' },
-        { id: 'o1-mini', label: 'o1 Mini' }
-      ],
-      anthropic: [
-        { id: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet' },
-        { id: 'claude-3-5-haiku-20241022', label: 'Claude 3.5 Haiku' },
-        { id: 'claude-3-opus-20240229', label: 'Claude 3 Opus' },
-        { id: 'claude-3-sonnet-20240229', label: 'Claude 3 Sonnet' },
-        { id: 'claude-3-haiku-20240307', label: 'Claude 3 Haiku' }
-      ],
-      groq: [
-        { id: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B' },
-        { id: 'llama-3.1-8b-instant', label: 'Llama 3.1 8B' },
-        { id: 'mixtral-8x7b-32768', label: 'Mixtral 8x7B' },
-        { id: 'gemma2-9b-it', label: 'Gemma 2 9B' }
-      ],
-      mistral: [
-        { id: 'mistral-large-latest', label: 'Mistral Large' },
-        { id: 'mistral-medium-latest', label: 'Mistral Medium' },
-        { id: 'mistral-small-latest', label: 'Mistral Small' },
-        { id: 'codestral-latest', label: 'Codestral' }
-      ],
-      google: [
-        { id: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro' },
-        { id: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash' },
-        { id: 'gemini-pro', label: 'Gemini Pro' }
-      ],
-      cohere: [
-        { id: 'command-r-plus', label: 'Command R+' },
-        { id: 'command-r', label: 'Command R' },
-        { id: 'command', label: 'Command' }
-      ],
-      together_ai: [
-        { id: 'meta-llama/Llama-3.3-70B-Instruct-Turbo', label: 'Llama 3.3 70B Instruct' },
-        { id: 'meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo', label: 'Llama 3.1 405B' },
-        { id: 'mistralai/Mixtral-8x22B-Instruct-v0.1', label: 'Mixtral 8x22B' },
-        { id: 'Qwen/Qwen2.5-72B-Instruct-Turbo', label: 'Qwen 2.5 72B' }
-      ],
-      openrouter: [
-        { id: 'openai/gpt-4o', label: 'GPT-4o (via OpenRouter)' },
-        { id: 'anthropic/claude-3.5-sonnet', label: 'Claude 3.5 Sonnet (via OpenRouter)' },
-        { id: 'google/gemini-pro-1.5', label: 'Gemini 1.5 Pro (via OpenRouter)' },
-        { id: 'meta-llama/llama-3.1-405b-instruct', label: 'Llama 3.1 405B (via OpenRouter)' }
-      ],
-      deepseek: [
-        { id: 'deepseek-chat', label: 'DeepSeek Chat' },
-        { id: 'deepseek-coder', label: 'DeepSeek Coder' }
-      ],
-      cerebras: [
-        { id: 'llama3.1-8b', label: 'Llama 3.1 8B' },
-        { id: 'llama3.1-70b', label: 'Llama 3.1 70B' }
-      ]
-    };
-
     // Toggle custom emulated name input
     emulatedModelSelect.addEventListener('change', function() {
       if (this.value === 'custom') {
@@ -395,15 +333,7 @@
       var providerId = providerSelect.value;
       var lower = query.trim().toLowerCase();
 
-      // Use static models if no models loaded from LiteLLM and provider is selected
-      var sourceModels = models;
-      if (sourceModels.length === 0 && providerId && STATIC_MODELS[providerId]) {
-        sourceModels = STATIC_MODELS[providerId].map(function(m) {
-          return { id: m.id, label: m.label, provider: providerId };
-        });
-      }
-
-      return sourceModels
+      return models
         .filter(function(model) { return !providerId || model.provider === providerId; })
         .filter(function(model) {
           if (!lower) return true;
@@ -667,24 +597,57 @@
         });
     }
 
-    function refreshModels(force) {
-      refreshModelsBtn.disabled = true;
-      var provider = providerSelect.value || '';
-      var url = '/models?force=' + (force ? 'true' : 'false') + (provider ? '&provider=' + provider : '');
+    function fetchModelsFromProvider(force) {
+      var accountValue = accountSelect.value;
+      var parts = accountValue.split('|');
+      var accountName = parts[0] || '';
+      var provider = providerSelect.value || parts[1] || '';
 
-      fetch(url)
+      if (!accountName || !provider) {
+        models = [];
+        modelDropdown.refreshOptions();
+        return Promise.resolve();
+      }
+
+      refreshModelsBtn.disabled = true;
+      setMessage('Fetching models...');
+
+      return fetch('/providers/models/fetch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider: provider,
+          accountName: accountName,
+          force: force || false
+        })
+      })
         .then(function(res) { return res.json(); })
         .then(function(data) {
-          models = data.models || [];
-          modelDropdown.refreshOptions();
-          setMessage(force ? 'Models refreshed.' : 'Models loaded.');
+          if (data.success) {
+            models = (data.models || []).map(function(m) {
+              return { id: m.id, label: m.label, provider: provider };
+            });
+            modelDropdown.refreshOptions();
+            var cached = data.cached ? ' (cached)' : '';
+            setMessage('Loaded ' + models.length + ' models' + cached);
+          } else {
+            models = [];
+            modelDropdown.refreshOptions();
+            showError(data.error || 'Failed to fetch models');
+          }
         })
         .catch(function(err) {
-          showError('Failed to load models: ' + err.message);
+          models = [];
+          modelDropdown.refreshOptions();
+          showError('Failed to fetch models: ' + err.message);
         })
         .finally(function() {
           refreshModelsBtn.disabled = false;
         });
+    }
+
+    function refreshModels(force) {
+      fetchModelsFromProvider(force);
     }
 
     function refreshHealth() {
@@ -787,13 +750,23 @@
             setEmulatedModelName(state.config.emulatedModelName || '');
           }
 
-          modelDropdown.refreshOptions();
           setEmulatorIndicator(state.emulatorActive);
 
           var currentProvider = providers.find(function(p) { return p.id === providerSelect.value; });
           setProviderIndicator(state.providerOnline !== false, currentProvider ? currentProvider.name : 'Provider');
 
-          setMessage('Ready.');
+          // Fetch models if account is selected
+          if (accountSelect.value) {
+            fetchModelsFromProvider(false).then(function() {
+              // Restore model selection after fetching
+              if (state.config && state.config.model) {
+                modelSelect.value = state.config.model;
+              }
+            });
+          } else {
+            modelDropdown.refreshOptions();
+            setMessage('Ready.');
+          }
           return refreshHealth();
         })
         .catch(function(err) {
@@ -841,14 +814,14 @@
         providerSelect.value = provId;
       }
 
-      // Clear model selection
+      // Clear model selection and fetch models from provider
       modelSelect.value = '';
-      modelDropdown.refreshOptions();
+      fetchModelsFromProvider(false);
     });
 
     providerSelect.addEventListener('change', function() {
       modelSelect.value = '';
-      modelDropdown.refreshOptions();
+      fetchModelsFromProvider(false);
     });
 
     testConnectionBtn.addEventListener('click', testConnection);
