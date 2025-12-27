@@ -13,7 +13,7 @@
     .section { margin-top: 18px; }
     .step-number { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; background: #3b82f6; color: white; border-radius: 50%; font-size: 13px; font-weight: 600; margin-right: 8px; }
     label { display: block; font-weight: 600; margin-bottom: 6px; }
-    input[type="text"], select { width: 100%; padding: 11px 12px; border: 1px solid #d9e1ec; border-radius: 10px; font-size: 14px; }
+    input[type="text"], input[type="password"], select { width: 100%; padding: 11px 12px; border: 1px solid #d9e1ec; border-radius: 10px; font-size: 14px; }
     input:focus, select:focus { outline: none; border-color: #4a9eff; box-shadow: 0 0 0 3px rgba(74,158,255,0.15); }
     .row { display: flex; gap: 10px; align-items: center; }
     .row > *:first-child { flex: 1; }
@@ -33,14 +33,11 @@
     .message { flex: 1; color: #1f2933; font-size: 13px; min-height: 18px; }
     .message.error { color: #ef4444; }
     .hint { font-size: 12px; color: #627384; margin-top: 4px; }
+    .hint a { color: #3b82f6; text-decoration: none; }
+    .hint a:hover { text-decoration: underline; }
     .emulated-section { background: #f0f7ff; border: 1px solid #bfdbfe; border-radius: 10px; padding: 16px; margin-top: 18px; }
     .emulated-section label { color: #1e40af; }
     .emulated-hint { font-size: 12px; color: #3b82f6; margin-top: 6px; }
-    .search-dropdown { position: relative; width: 100%; }
-    .dropdown-menu { position: absolute; top: calc(100% + 4px); left: 0; right: 0; background: #fff; border: 1px solid #d9e1ec; border-radius: 10px; box-shadow: 0 8px 20px rgba(0,0,0,0.06); max-height: 260px; overflow-y: auto; padding: 6px 0; z-index: 10; display: none; }
-    .dropdown-menu.open { display: block; }
-    .dropdown-item { padding: 10px 12px; cursor: pointer; font-size: 14px; }
-    .dropdown-item:hover { background: #f3f7ff; }
   </style>
 </head>
 <body>
@@ -50,33 +47,42 @@
       <p class="muted">Route any model name to any provider via LiteLLM.</p>
     </header>
 
-    <!-- Step 1: Account -->
+    <!-- Step 1: Provider -->
     <div class="section">
-      <label><span class="step-number">1</span> Account</label>
-      <div class="row">
-        <select id="account-select">
-          <option value="">-- Select an account --</option>
-        </select>
-        <button id="refresh-accounts" class="secondary" title="Refresh">&#x21bb;</button>
-      </div>
-      <p class="hint">Select from accounts configured in Connect page.</p>
+      <label><span class="step-number">1</span> Provider</label>
+      <select id="provider-select">
+        <option value="">-- Select a provider --</option>
+        <option value="openai">OpenAI</option>
+        <option value="anthropic">Anthropic</option>
+        <option value="groq">Groq</option>
+        <option value="mistral">Mistral</option>
+        <option value="google">Google (Gemini)</option>
+        <option value="cohere">Cohere</option>
+        <option value="together_ai">Together AI</option>
+        <option value="openrouter">OpenRouter</option>
+        <option value="deepseek">DeepSeek</option>
+        <option value="cerebras">Cerebras</option>
+      </select>
+      <p class="hint">Select the AI provider for this model.</p>
     </div>
 
     <!-- Step 2: Model -->
     <div class="section">
       <label><span class="step-number">2</span> Model</label>
-      <div class="row">
-        <div class="search-dropdown">
-          <input type="text" id="model-input" autocomplete="off" placeholder="Enter model name (e.g., gpt-4, claude-3-opus)">
-          <div id="models-list" class="dropdown-menu"></div>
-        </div>
-      </div>
-      <p class="hint">The actual model to use from your provider.</p>
+      <input type="text" id="model-input" autocomplete="off" placeholder="Enter model name (e.g., gpt-4, claude-3-opus)">
+      <p class="hint">The actual model ID from your provider.</p>
     </div>
 
-    <!-- Step 3: Emulated Name -->
+    <!-- Step 3: API Key -->
+    <div class="section">
+      <label><span class="step-number">3</span> API Key</label>
+      <input type="password" id="api-key-input" autocomplete="off" placeholder="Paste your API key here">
+      <p class="hint" id="api-key-hint">Your API key is sent directly to LiteLLM and never stored in the browser.</p>
+    </div>
+
+    <!-- Step 4: Emulated Name -->
     <div class="emulated-section">
-      <label><span class="step-number" style="background:#1e40af;">3</span> Emulated Model Name</label>
+      <label><span class="step-number" style="background:#1e40af;">4</span> Emulated Model Name</label>
       <input type="text" id="emulated-name" placeholder="e.g., gpt-4 (what apps will request)">
       <p class="emulated-hint">When apps request this name, it routes to your model above.</p>
     </div>
@@ -111,11 +117,23 @@
 
   <script>
     var LITELLM_URL = 'http://localhost:11434';
-    var STORAGE_KEY = 'vme_accounts';
 
-    var accountSelect = document.getElementById('account-select');
-    var refreshAccountsBtn = document.getElementById('refresh-accounts');
+    var PROVIDER_KEY_LINKS = {
+      'openai': 'https://platform.openai.com/api-keys',
+      'anthropic': 'https://console.anthropic.com/settings/keys',
+      'groq': 'https://console.groq.com/keys',
+      'mistral': 'https://console.mistral.ai/api-keys/',
+      'google': 'https://aistudio.google.com/app/apikey',
+      'cohere': 'https://dashboard.cohere.com/api-keys',
+      'together_ai': 'https://api.together.xyz/settings/api-keys',
+      'openrouter': 'https://openrouter.ai/keys',
+      'deepseek': 'https://platform.deepseek.com/api_keys',
+      'cerebras': 'https://cloud.cerebras.ai/platform'
+    };
+
+    var providerSelect = document.getElementById('provider-select');
     var modelInput = document.getElementById('model-input');
+    var apiKeyInput = document.getElementById('api-key-input');
     var emulatedNameInput = document.getElementById('emulated-name');
     var addModelBtn = document.getElementById('add-model');
     var statusIndicator = document.getElementById('status-indicator');
@@ -123,14 +141,7 @@
     var refreshHealthBtn = document.getElementById('refresh-health');
     var statusMessage = document.getElementById('status-message');
     var modelsContainer = document.getElementById('models-container');
-
-    function getAccounts() {
-      try {
-        return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
-      } catch (e) {
-        return [];
-      }
-    }
+    var apiKeyHint = document.getElementById('api-key-hint');
 
     function setMessage(text) {
       statusMessage.textContent = text || '';
@@ -148,23 +159,6 @@
       statusIndicatorText.textContent = online ? 'LiteLLM Online' : 'LiteLLM Offline';
     }
 
-    function populateAccounts() {
-      var accounts = getAccounts();
-      accountSelect.innerHTML = '<option value="">-- Select an account --</option>';
-      accounts.forEach(function(acc) {
-        var opt = document.createElement('option');
-        opt.value = acc.id;
-        opt.textContent = acc.name + ' (' + acc.provider + ')';
-        accountSelect.appendChild(opt);
-      });
-    }
-
-    function getSelectedAccount() {
-      var id = accountSelect.value;
-      if (!id) return null;
-      return getAccounts().find(function(a) { return a.id === id; });
-    }
-
     function getProviderPrefix(provider) {
       var prefixes = {
         'openai': '',
@@ -173,12 +167,16 @@
         'mistral': 'mistral/',
         'google': 'gemini/',
         'cohere': 'cohere/',
-        'together': 'together_ai/',
+        'together_ai': 'together_ai/',
         'openrouter': 'openrouter/',
         'deepseek': 'deepseek/',
         'cerebras': 'cerebras/'
       };
       return prefixes[provider] || (provider + '/');
+    }
+
+    function getMasterKey() {
+      return localStorage.getItem('vme_master_key') || 'sk-litellm-master-key';
     }
 
     function checkHealth() {
@@ -212,11 +210,6 @@
         });
     }
 
-    function getMasterKey() {
-      // Read from localStorage or use default
-      return localStorage.getItem('vme_master_key') || 'sk-litellm-master-key';
-    }
-
     function renderActiveModels(models) {
       if (models.length === 0) {
         modelsContainer.innerHTML = '<p class="hint">No models configured yet.</p>';
@@ -226,7 +219,7 @@
         var name = m.model_name || m.id || 'Unknown';
         var info = m.litellm_params ? m.litellm_params.model : '';
         return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:#f8fafc;border-radius:8px;margin-bottom:6px;">' +
-          '<span><strong>' + name + '</strong>' + (info ? ' <span class="muted">→ ' + info + '</span>' : '') + '</span>' +
+          '<span><strong>' + name + '</strong>' + (info ? ' <span class="muted">&rarr; ' + info + '</span>' : '') + '</span>' +
           '<button class="secondary" style="padding:6px 10px;font-size:12px;" onclick="deleteModel(\'' + name + '\')">Remove</button>' +
           '</div>';
       }).join('');
@@ -253,9 +246,9 @@
     }
 
     function addModel() {
-      var account = getSelectedAccount();
-      if (!account) {
-        showError('Select an account first.');
+      var provider = providerSelect.value;
+      if (!provider) {
+        showError('Select a provider first.');
         return;
       }
 
@@ -265,12 +258,18 @@
         return;
       }
 
+      var apiKey = apiKeyInput.value.trim();
+      if (!apiKey) {
+        showError('Enter your API key.');
+        return;
+      }
+
       var emulatedName = emulatedNameInput.value.trim() || modelName;
 
       addModelBtn.disabled = true;
       addModelBtn.textContent = 'Adding...';
 
-      var fullModelName = getProviderPrefix(account.provider) + modelName;
+      var fullModelName = getProviderPrefix(provider) + modelName;
 
       fetch(LITELLM_URL + '/model/new', {
         method: 'POST',
@@ -282,7 +281,7 @@
           model_name: emulatedName,
           litellm_params: {
             model: fullModelName,
-            api_key: account.apiKey
+            api_key: apiKey
           }
         })
       })
@@ -293,6 +292,7 @@
           } else {
             setMessage('Model "' + emulatedName + '" added successfully.');
             modelInput.value = '';
+            apiKeyInput.value = '';
             emulatedNameInput.value = '';
             loadActiveModels();
           }
@@ -306,13 +306,21 @@
         });
     }
 
+    // Update API key hint with link when provider changes
+    providerSelect.addEventListener('change', function() {
+      var provider = providerSelect.value;
+      if (provider && PROVIDER_KEY_LINKS[provider]) {
+        apiKeyHint.innerHTML = 'Your API key is sent directly to LiteLLM and never stored in the browser. <a href="' + PROVIDER_KEY_LINKS[provider] + '" target="_blank">Get your API key &rarr;</a>';
+      } else {
+        apiKeyHint.textContent = 'Your API key is sent directly to LiteLLM and never stored in the browser.';
+      }
+    });
+
     // Event listeners
-    refreshAccountsBtn.addEventListener('click', populateAccounts);
     refreshHealthBtn.addEventListener('click', checkHealth);
     addModelBtn.addEventListener('click', addModel);
 
     // Initialize
-    populateAccounts();
     checkHealth();
   </script>
 </body>
