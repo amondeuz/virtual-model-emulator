@@ -1,23 +1,24 @@
 module.exports = {
-  "run": [
+  run: [
     {
-      "method": "log",
-      "params": {
-        "raw": "Installing Python dependencies..."
+      method: "log",
+      params: {
+        raw: "Installing Python dependencies..."
       }
     },
     {
-      "method": "shell.run",
-      "params": {
-        "message": "pip install -r requirements.txt",
-        "venv": "env", // Key: Tells Pinokio to run this INSIDE the virtual env
-        "path": "."
+      method: "shell.run",
+      params: {
+        // Change this line to use the venv's pip directly
+        message: ".\\env\\Scripts\\pip install -r requirements.txt",
+        path: "."
+        // Remove the "venv": "env" line entirely
       }
     },
     {
-      "method": "log",
-      "params": {
-        "raw": "Installation complete!"
+      method: "log",
+      params: {
+        raw: "Installation complete!"
       }
     }
   ]
