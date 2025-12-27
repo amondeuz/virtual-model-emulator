@@ -304,7 +304,7 @@
   <div class="container">
     <header>
       <h1>Connect Providers</h1>
-      <p class="muted">Add your API keys to enable AI providers. Keys are encrypted before storage.</p>
+      <p class="muted">Add your API keys to enable AI providers. Keys are stored locally in your browser.</p>
     </header>
 
     <div id="status-container"></div>
@@ -372,6 +372,7 @@
       { id: 'cerebras', name: 'Cerebras', keyLink: 'https://cloud.cerebras.ai/platform', initials: 'CB' }
     ];
 
+    var STORAGE_KEY = 'vme_accounts';
     var accounts = [];
     var editMode = {};  // Track which provider is in edit mode
 
@@ -391,23 +392,25 @@
       return PROVIDERS.find(function(p) { return p.id === id; }) || { id: id, name: id, initials: id.substring(0, 2).toUpperCase() };
     }
 
+    function getAccounts() {
+      try {
+        return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+      } catch (e) {
+        return [];
+      }
+    }
+
+    function saveAccounts(accts) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(accts));
+    }
+
+    function generateId() {
+      return 'acc_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    }
+
     function loadAccounts() {
-      fetch('/providers/accounts')
-        .then(function(response) {
-          if (response.ok) {
-            return response.json();
-          }
-          return [];
-        })
-        .then(function(data) {
-          accounts = data;
-          renderProviderCards();
-        })
-        .catch(function(err) {
-          console.error('Failed to load accounts:', err);
-          accounts = [];
-          renderProviderCards();
-        });
+      accounts = getAccounts();
+      renderProviderCards();
     }
 
     function renderProviderCards() {
@@ -444,10 +447,10 @@
 
         var accountsHtml = providerAccounts.map(function(acc) {
           return '<div class="account-item">' +
-            (isEditMode ? '<input type="checkbox" class="account-checkbox" data-provider="' + providerId + '" data-account="' + escapeHtml(acc.accountName) + '">' : '') +
+            (isEditMode ? '<input type="checkbox" class="account-checkbox" data-provider="' + providerId + '" data-id="' + escapeHtml(acc.id) + '">' : '') +
             '<span class="account-name">' +
               '<span class="check">&#10003;</span>' +
-              escapeHtml(acc.accountName) +
+              escapeHtml(acc.name) +
             '</span>' +
           '</div>';
         }).join('');
@@ -542,32 +545,20 @@
         return;
       }
 
-      var deleted = 0;
-      var promises = [];
-
+      var idsToDelete = [];
       checkboxes.forEach(function(checkbox) {
-        var accountName = checkbox.dataset.account;
-        var promise = fetch('/providers/disconnect', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ provider: providerId, accountName: accountName })
-        })
-        .then(function(response) {
-          if (response.ok) {
-            deleted++;
-          }
-        })
-        .catch(function(err) {
-          console.error('Failed to delete account:', err);
-        });
-        promises.push(promise);
+        idsToDelete.push(checkbox.dataset.id);
       });
 
-      Promise.all(promises).then(function() {
-        editMode[providerId] = false;
-        showStatus('Deleted ' + deleted + ' account(s)', 'success');
-        loadAccounts();
+      var currentAccounts = getAccounts();
+      var newAccounts = currentAccounts.filter(function(acc) {
+        return idsToDelete.indexOf(acc.id) === -1;
       });
+
+      saveAccounts(newAccounts);
+      editMode[providerId] = false;
+      showStatus('Deleted ' + idsToDelete.length + ' account(s)', 'success');
+      loadAccounts();
     }
 
     function saveAccount() {
@@ -588,33 +579,31 @@
         return;
       }
 
-      fetch('/providers/connect', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          provider: provider,
-          accountName: accountName,
-          apiKey: apiKey
-        })
-      })
-      .then(function(response) {
-        return response.json().then(function(data) {
-          return { ok: response.ok, data: data };
-        });
-      })
-      .then(function(result) {
-        if (result.ok && result.data.success) {
-          closeModal();
-          var providerInfo = getProviderInfo(provider);
-          showStatus('Successfully added "' + accountName + '" for ' + providerInfo.name, 'success');
-          loadAccounts();
-        } else {
-          showStatus(result.data.error || 'Failed to save account', 'error');
-        }
-      })
-      .catch(function(err) {
-        showStatus('Connection error: ' + err.message, 'error');
+      var currentAccounts = getAccounts();
+
+      // Check for duplicate name within same provider
+      var duplicate = currentAccounts.find(function(acc) {
+        return acc.provider === provider && acc.name === accountName;
       });
+      if (duplicate) {
+        showStatus('An account with this name already exists for this provider', 'error');
+        return;
+      }
+
+      // Add new account
+      var newAccount = {
+        id: generateId(),
+        name: accountName,
+        provider: provider,
+        apiKey: apiKey
+      };
+      currentAccounts.push(newAccount);
+      saveAccounts(currentAccounts);
+
+      closeModal();
+      var providerInfo = getProviderInfo(provider);
+      showStatus('Successfully added "' + accountName + '" for ' + providerInfo.name, 'success');
+      loadAccounts();
     }
 
     // Update API key link when provider changes
