@@ -10,27 +10,25 @@ module.exports = {
     {
       method: "shell.run",
       params: {
-        // Change this line to use the venv's Python directly
         message: ".\\env\\Scripts\\python -m server.main",
-        // Remove the "venv": "env" line entirely
-        on: [
-          {
-            "event": "/PINOKIO_STARTUP: (http:\\/\\/localhost:[0-9]+\\/config\\.html)/",
-            "done": true
-          }
-        ]
+        // KEY CHANGE: This new, standard regex catches any standard HTTP URL
+        on: [{
+          "event": "/http:\\/\\/[^\\s]+/", // This matches "http://" followed by any non-space chars
+          "done": true
+        }]
       }
     },
     {
       method: "local.set",
       params: {
-        url: "{{input.event[1]}}"
+        // KEY CHANGE: Use event[0] which is the *entire matched string*
+        url: "{{input.event[0]}}"
       }
     },
     {
       method: "log",
       params: {
-        raw: "UI ready at {{input.event[1]}}"
+        raw: "UI ready at {{input.event[0]}}"
       }
     }
   ]
