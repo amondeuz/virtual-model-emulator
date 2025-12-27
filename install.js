@@ -10,5 +10,13 @@ module.exports = {
         ],
       }
     },
+    // Create marker file to indicate successful installation
+    {
+      method: "fs.writeFile",
+      params: {
+        path: "env/.installed",
+        content: "Installation completed successfully"
+      }
+    }
   ]
 }
