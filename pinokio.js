@@ -18,8 +18,8 @@ module.exports = {
       ];
     }
 
-    // Check if dependencies are installed (env folder exists means install.js has run)
-    const installed = info.exists('env');
+    // Check if dependencies are installed (marker file exists means install.js completed successfully)
+    const installed = info.exists('env/.installed');
     if (!installed) {
       return [
         { text: 'Install', icon: 'fa-solid fa-download', href: 'install.js', default: true },
