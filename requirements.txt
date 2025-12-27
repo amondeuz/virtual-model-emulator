@@ -1,1 +1,1 @@
-litellm>=1.10.0
+litellm[proxy]>=1.10.0
