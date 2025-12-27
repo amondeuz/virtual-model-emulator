@@ -970,6 +970,26 @@ async def root():
     return RedirectResponse(url="/config.html")
 
 
+@app.get("/config.html")
+async def serve_config():
+    """Serve config.html explicitly."""
+    from fastapi.responses import FileResponse
+    config_path = PUBLIC_DIR / "config.html"
+    if config_path.exists():
+        return FileResponse(config_path, media_type="text/html")
+    return JSONResponse(status_code=404, content={"detail": f"File not found: {config_path}"})
+
+
+@app.get("/connect.html")
+async def serve_connect():
+    """Serve connect.html explicitly."""
+    from fastapi.responses import FileResponse
+    connect_path = PUBLIC_DIR / "connect.html"
+    if connect_path.exists():
+        return FileResponse(connect_path, media_type="text/html")
+    return JSONResponse(status_code=404, content={"detail": f"File not found: {connect_path}"})
+
+
 # Mount static files (must be after all routes)
 app.mount("/", StaticFiles(directory=str(PUBLIC_DIR), html=True), name="static")
 
