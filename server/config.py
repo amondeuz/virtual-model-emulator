@@ -212,6 +212,31 @@ def get_encrypted_api_key(provider: str, account_name: str) -> Optional[str]:
     return account.get("encryptedApiKey") if account else None
 
 
+def get_decrypted_api_key(provider: str, account_name: str) -> Optional[str]:
+    """Get the decrypted API key for a specific account."""
+    encrypted_key = get_encrypted_api_key(provider, account_name)
+    if not encrypted_key:
+        return None
+
+    master_key = get_or_create_master_key()
+
+    # Handle our fallback base64 encoding
+    if encrypted_key.startswith("base64:"):
+        try:
+            return base64.b64decode(encrypted_key[7:]).decode()
+        except:
+            return None
+
+    # Try LiteLLM decryption
+    try:
+        from litellm import decrypt_key
+        return decrypt_key(encrypted_key, master_key)
+    except (ImportError, AttributeError, Exception):
+        pass
+
+    return None
+
+
 # =============================================================================
 # LiteLLM Config Generation
 # =============================================================================

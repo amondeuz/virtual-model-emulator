@@ -24,7 +24,7 @@ from .config import (
     get_config, update_config, get_accounts, add_account, remove_account,
     get_saved_configs, add_saved_config, update_saved_config, delete_saved_config,
     get_saved_config_by_id, generate_litellm_config,
-    get_or_create_master_key, CONFIG_DIR
+    get_or_create_master_key, get_decrypted_api_key, CONFIG_DIR
 )
 
 
@@ -473,6 +473,320 @@ async def get_provider_models(provider: Optional[str] = Query(None)):
     if provider:
         models = [m for m in models if provider in m.get("id", "")]
     return JSONResponse(content={"models": models})
+
+
+@app.post("/providers/models/fetch")
+async def fetch_provider_models(request: Request):
+    """Fetch models directly from provider API with caching."""
+    global _models_cache, _models_cache_time
+
+    body = await request.json()
+    provider = body.get("provider", "").strip()
+    account_name = body.get("accountName", "").strip()
+    force = body.get("force", False)
+
+    if not provider:
+        return JSONResponse(
+            status_code=400,
+            content={"success": False, "error": "Provider is required", "models": []}
+        )
+
+    if not account_name:
+        return JSONResponse(
+            status_code=400,
+            content={"success": False, "error": "Account name is required", "models": []}
+        )
+
+    cache_key = f"{provider}:{account_name}"
+
+    # Check cache (unless force refresh)
+    if not force and cache_key in _models_cache:
+        return JSONResponse(content={
+            "success": True,
+            "models": _models_cache[cache_key],
+            "cached": True
+        })
+
+    # Get the decrypted API key
+    api_key = get_decrypted_api_key(provider, account_name)
+    if not api_key:
+        return JSONResponse(
+            status_code=400,
+            content={"success": False, "error": "Could not retrieve API key", "models": []}
+        )
+
+    # Provider-specific model endpoints
+    model_configs = {
+        "openai": {
+            "url": "https://api.openai.com/v1/models",
+            "headers": {"Authorization": f"Bearer {api_key}"},
+            "parser": lambda data: [
+                {"id": m["id"], "label": m["id"]}
+                for m in data.get("data", [])
+                if "gpt" in m["id"] or "o1" in m["id"] or "davinci" in m["id"]
+            ]
+        },
+        "anthropic": {
+            "url": "https://api.anthropic.com/v1/models",
+            "headers": {
+                "x-api-key": api_key,
+                "anthropic-version": "2023-06-01"
+            },
+            "parser": lambda data: [
+                {"id": m["id"], "label": m.get("display_name", m["id"])}
+                for m in data.get("data", [])
+            ]
+        },
+        "groq": {
+            "url": "https://api.groq.com/openai/v1/models",
+            "headers": {"Authorization": f"Bearer {api_key}"},
+            "parser": lambda data: [
+                {"id": m["id"], "label": m["id"]}
+                for m in data.get("data", [])
+            ]
+        },
+        "mistral": {
+            "url": "https://api.mistral.ai/v1/models",
+            "headers": {"Authorization": f"Bearer {api_key}"},
+            "parser": lambda data: [
+                {"id": m["id"], "label": m["id"]}
+                for m in data.get("data", [])
+            ]
+        },
+        "google": {
+            "url": f"https://generativelanguage.googleapis.com/v1/models?key={api_key}",
+            "headers": {},
+            "parser": lambda data: [
+                {"id": m["name"].replace("models/", ""), "label": m.get("displayName", m["name"])}
+                for m in data.get("models", [])
+                if "generateContent" in m.get("supportedGenerationMethods", [])
+            ]
+        },
+        "cohere": {
+            "url": "https://api.cohere.ai/v1/models",
+            "headers": {"Authorization": f"Bearer {api_key}"},
+            "parser": lambda data: [
+                {"id": m["name"], "label": m["name"]}
+                for m in data.get("models", [])
+                if m.get("endpoints") and "chat" in m.get("endpoints", [])
+            ]
+        },
+        "together_ai": {
+            "url": "https://api.together.xyz/v1/models",
+            "headers": {"Authorization": f"Bearer {api_key}"},
+            "parser": lambda data: [
+                {"id": m["id"], "label": m.get("display_name", m["id"])}
+                for m in data
+                if m.get("type") == "chat"
+            ] if isinstance(data, list) else []
+        },
+        "openrouter": {
+            "url": "https://openrouter.ai/api/v1/models",
+            "headers": {"Authorization": f"Bearer {api_key}"},
+            "parser": lambda data: [
+                {"id": m["id"], "label": m.get("name", m["id"])}
+                for m in data.get("data", [])
+            ]
+        },
+        "deepseek": {
+            "url": "https://api.deepseek.com/v1/models",
+            "headers": {"Authorization": f"Bearer {api_key}"},
+            "parser": lambda data: [
+                {"id": m["id"], "label": m["id"]}
+                for m in data.get("data", [])
+            ]
+        },
+        "cerebras": {
+            "url": "https://api.cerebras.ai/v1/models",
+            "headers": {"Authorization": f"Bearer {api_key}"},
+            "parser": lambda data: [
+                {"id": m["id"], "label": m["id"]}
+                for m in data.get("data", [])
+            ]
+        }
+    }
+
+    config = model_configs.get(provider)
+    if not config:
+        return JSONResponse(
+            status_code=400,
+            content={"success": False, "error": f"Unknown provider: {provider}", "models": []}
+        )
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                config["url"],
+                headers=config["headers"],
+                timeout=15.0
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                models = config["parser"](data)
+
+                # Cache the results
+                _models_cache[cache_key] = models
+
+                return JSONResponse(content={
+                    "success": True,
+                    "models": models,
+                    "cached": False
+                })
+            elif response.status_code == 401:
+                return JSONResponse(content={
+                    "success": False,
+                    "error": "Invalid API key",
+                    "models": []
+                })
+            else:
+                return JSONResponse(content={
+                    "success": False,
+                    "error": f"Provider returned status {response.status_code}",
+                    "models": []
+                })
+
+    except httpx.TimeoutException:
+        return JSONResponse(content={
+            "success": False,
+            "error": "Connection timed out",
+            "models": []
+        })
+    except Exception as e:
+        return JSONResponse(content={
+            "success": False,
+            "error": f"Failed to fetch models: {str(e)}",
+            "models": []
+        })
+
+
+@app.post("/providers/test")
+async def test_provider_connection(request: Request):
+    """Test API key by making a request to the provider."""
+    body = await request.json()
+
+    provider = body.get("provider", "").strip()
+    account_name = body.get("accountName", "").strip()
+
+    if not provider:
+        return JSONResponse(
+            status_code=400,
+            content={"success": False, "error": "Provider is required"}
+        )
+
+    if not account_name:
+        return JSONResponse(
+            status_code=400,
+            content={"success": False, "error": "Account name is required"}
+        )
+
+    # Get the decrypted API key
+    api_key = get_decrypted_api_key(provider, account_name)
+    if not api_key:
+        return JSONResponse(
+            status_code=400,
+            content={"success": False, "error": "Could not retrieve API key for this account"}
+        )
+
+    # Provider-specific test endpoints
+    test_configs = {
+        "openai": {
+            "url": "https://api.openai.com/v1/models",
+            "headers": {"Authorization": f"Bearer {api_key}"}
+        },
+        "anthropic": {
+            "url": "https://api.anthropic.com/v1/messages",
+            "headers": {
+                "x-api-key": api_key,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json"
+            },
+            "method": "POST",
+            "body": {"model": "claude-3-haiku-20240307", "max_tokens": 1, "messages": [{"role": "user", "content": "Hi"}]}
+        },
+        "groq": {
+            "url": "https://api.groq.com/openai/v1/models",
+            "headers": {"Authorization": f"Bearer {api_key}"}
+        },
+        "mistral": {
+            "url": "https://api.mistral.ai/v1/models",
+            "headers": {"Authorization": f"Bearer {api_key}"}
+        },
+        "google": {
+            "url": f"https://generativelanguage.googleapis.com/v1/models?key={api_key}",
+            "headers": {}
+        },
+        "cohere": {
+            "url": "https://api.cohere.ai/v1/models",
+            "headers": {"Authorization": f"Bearer {api_key}"}
+        },
+        "together_ai": {
+            "url": "https://api.together.xyz/v1/models",
+            "headers": {"Authorization": f"Bearer {api_key}"}
+        },
+        "openrouter": {
+            "url": "https://openrouter.ai/api/v1/models",
+            "headers": {"Authorization": f"Bearer {api_key}"}
+        },
+        "deepseek": {
+            "url": "https://api.deepseek.com/v1/models",
+            "headers": {"Authorization": f"Bearer {api_key}"}
+        },
+        "cerebras": {
+            "url": "https://api.cerebras.ai/v1/models",
+            "headers": {"Authorization": f"Bearer {api_key}"}
+        }
+    }
+
+    config = test_configs.get(provider)
+    if not config:
+        return JSONResponse(
+            status_code=400,
+            content={"success": False, "error": f"Unknown provider: {provider}"}
+        )
+
+    try:
+        async with httpx.AsyncClient() as client:
+            if config.get("method") == "POST":
+                response = await client.post(
+                    config["url"],
+                    headers=config["headers"],
+                    json=config.get("body", {}),
+                    timeout=10.0
+                )
+            else:
+                response = await client.get(
+                    config["url"],
+                    headers=config["headers"],
+                    timeout=10.0
+                )
+
+            if response.status_code == 200 or response.status_code == 201:
+                return JSONResponse(content={
+                    "success": True,
+                    "message": f"Successfully connected to {provider.title()}"
+                })
+            elif response.status_code == 401:
+                return JSONResponse(content={
+                    "success": False,
+                    "error": "Invalid API key"
+                })
+            else:
+                return JSONResponse(content={
+                    "success": False,
+                    "error": f"Provider returned status {response.status_code}"
+                })
+
+    except httpx.TimeoutException:
+        return JSONResponse(content={
+            "success": False,
+            "error": "Connection timed out"
+        })
+    except Exception as e:
+        return JSONResponse(content={
+            "success": False,
+            "error": f"Connection failed: {str(e)}"
+        })
 
 
 # =============================================================================

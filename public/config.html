@@ -68,9 +68,12 @@
     <!-- Step 1: Account -->
     <div class="section">
       <label><span class="step-number">1</span> Account <span class="muted" style="font-weight:400">Which credential to use</span></label>
-      <select id="account-select">
-        <option value="">-- Select an account --</option>
-      </select>
+      <div class="row">
+        <select id="account-select">
+          <option value="">-- Select an account --</option>
+        </select>
+        <button id="refresh-accounts" class="secondary" title="Refresh accounts list">&#x21bb;</button>
+      </div>
       <p class="hint">Select from connected accounts. If you have multiple for the same provider, choose which credential to use.</p>
     </div>
 
@@ -188,6 +191,7 @@
     var emulatorPort = 11434;
     var apiEndpointInfo = document.getElementById('api-endpoint-info');
     var apiEndpointUrl = document.getElementById('api-endpoint-url');
+    var refreshAccountsBtn = document.getElementById('refresh-accounts');
 
     // Toggle custom emulated name input
     emulatedModelSelect.addEventListener('change', function() {
@@ -555,15 +559,33 @@
         return;
       }
 
+      var accountValue = accountSelect.value;
+      var parts = accountValue.split('|');
+      var accountName = parts[0] || '';
+
+      if (!accountName) {
+        setMessage('Select an account first.');
+        return;
+      }
+
       testConnectionBtn.disabled = true;
       testConnectionBtn.textContent = 'Testing...';
 
-      fetch('/health')
+      fetch('/providers/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider: provider, accountName: accountName })
+      })
         .then(function(res) { return res.json(); })
         .then(function(data) {
           var providerInfo = providers.find(function(p) { return p.id === provider; });
-          setProviderIndicator(data.online === true, providerInfo ? providerInfo.name : provider);
-          setMessage(data.message || 'Connection tested.');
+          if (data.success) {
+            setProviderIndicator(true, providerInfo ? providerInfo.name : provider);
+            setMessage(data.message || 'Connection successful.');
+          } else {
+            setProviderIndicator(false, providerInfo ? providerInfo.name : provider);
+            showError(data.error || 'Connection test failed.');
+          }
         })
         .catch(function(err) {
           setProviderIndicator(false);
@@ -575,24 +597,57 @@
         });
     }
 
-    function refreshModels(force) {
-      refreshModelsBtn.disabled = true;
-      var provider = providerSelect.value || '';
-      var url = '/models?force=' + (force ? 'true' : 'false') + (provider ? '&provider=' + provider : '');
+    function fetchModelsFromProvider(force) {
+      var accountValue = accountSelect.value;
+      var parts = accountValue.split('|');
+      var accountName = parts[0] || '';
+      var provider = providerSelect.value || parts[1] || '';
 
-      fetch(url)
+      if (!accountName || !provider) {
+        models = [];
+        modelDropdown.refreshOptions();
+        return Promise.resolve();
+      }
+
+      refreshModelsBtn.disabled = true;
+      setMessage('Fetching models...');
+
+      return fetch('/providers/models/fetch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider: provider,
+          accountName: accountName,
+          force: force || false
+        })
+      })
         .then(function(res) { return res.json(); })
         .then(function(data) {
-          models = data.models || [];
-          modelDropdown.refreshOptions();
-          setMessage(force ? 'Models refreshed.' : 'Models loaded.');
+          if (data.success) {
+            models = (data.models || []).map(function(m) {
+              return { id: m.id, label: m.label, provider: provider };
+            });
+            modelDropdown.refreshOptions();
+            var cached = data.cached ? ' (cached)' : '';
+            setMessage('Loaded ' + models.length + ' models' + cached);
+          } else {
+            models = [];
+            modelDropdown.refreshOptions();
+            showError(data.error || 'Failed to fetch models');
+          }
         })
         .catch(function(err) {
-          showError('Failed to load models: ' + err.message);
+          models = [];
+          modelDropdown.refreshOptions();
+          showError('Failed to fetch models: ' + err.message);
         })
         .finally(function() {
           refreshModelsBtn.disabled = false;
         });
+    }
+
+    function refreshModels(force) {
+      fetchModelsFromProvider(force);
     }
 
     function refreshHealth() {
@@ -695,13 +750,23 @@
             setEmulatedModelName(state.config.emulatedModelName || '');
           }
 
-          modelDropdown.refreshOptions();
           setEmulatorIndicator(state.emulatorActive);
 
           var currentProvider = providers.find(function(p) { return p.id === providerSelect.value; });
           setProviderIndicator(state.providerOnline !== false, currentProvider ? currentProvider.name : 'Provider');
 
-          setMessage('Ready.');
+          // Fetch models if account is selected
+          if (accountSelect.value) {
+            fetchModelsFromProvider(false).then(function() {
+              // Restore model selection after fetching
+              if (state.config && state.config.model) {
+                modelSelect.value = state.config.model;
+              }
+            });
+          } else {
+            modelDropdown.refreshOptions();
+            setMessage('Ready.');
+          }
           return refreshHealth();
         })
         .catch(function(err) {
@@ -749,20 +814,34 @@
         providerSelect.value = provId;
       }
 
-      // Clear model selection
+      // Clear model selection and fetch models from provider
       modelSelect.value = '';
-      modelDropdown.refreshOptions();
+      fetchModelsFromProvider(false);
     });
 
     providerSelect.addEventListener('change', function() {
       modelSelect.value = '';
-      modelDropdown.refreshOptions();
+      fetchModelsFromProvider(false);
     });
 
     testConnectionBtn.addEventListener('click', testConnection);
     refreshModelsBtn.addEventListener('click', function() { refreshModels(true); });
     startStopBtn.addEventListener('click', handleStartStop);
     refreshHealthBtn.addEventListener('click', refreshHealth);
+    refreshAccountsBtn.addEventListener('click', function() {
+      refreshAccountsBtn.disabled = true;
+      fetchState(false).then(function(state) {
+        accounts = state.accounts || [];
+        providers = state.providers || [];
+        populateAccounts();
+        populateProviders();
+        setMessage('Accounts refreshed.');
+      }).catch(function(err) {
+        showError('Failed to refresh accounts');
+      }).finally(function() {
+        refreshAccountsBtn.disabled = false;
+      });
+    });
 
     var modelDropdown = setupSearchDropdown(
       modelSelect,
