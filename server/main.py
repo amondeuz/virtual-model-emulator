@@ -34,8 +34,6 @@ _emulator_active: bool = False
 
 # Models cache
 _models_cache: Dict[str, Any] = {}
-_models_cache_time: Dict[str, float] = {}
-MODELS_CACHE_TTL = 300  # 5 minutes cache TTL
 
 # Path to LiteLLM config
 LITELLM_CONFIG_PATH = CONFIG_DIR / "config.yaml"
@@ -503,13 +501,11 @@ async def fetch_provider_models(request: Request):
 
     # Check cache (unless force refresh)
     if not force and cache_key in _models_cache:
-        cache_age = time.time() - _models_cache_time.get(cache_key, 0)
-        if cache_age < MODELS_CACHE_TTL:
-            return JSONResponse(content={
-                "success": True,
-                "models": _models_cache[cache_key],
-                "cached": True
-            })
+        return JSONResponse(content={
+            "success": True,
+            "models": _models_cache[cache_key],
+            "cached": True
+        })
 
     # Get the decrypted API key
     api_key = get_decrypted_api_key(provider, account_name)
@@ -631,7 +627,6 @@ async def fetch_provider_models(request: Request):
 
                 # Cache the results
                 _models_cache[cache_key] = models
-                _models_cache_time[cache_key] = time.time()
 
                 return JSONResponse(content={
                     "success": True,
