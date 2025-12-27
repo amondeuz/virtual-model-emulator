@@ -1,5 +1,5 @@
 module.exports = {
-  version: '4.0',
+  version: '5.3.0',
   title: 'Virtual Model Emulator',
   description: 'OpenAI-compatible endpoint powered by LiteLLM. Supports 100+ AI providers.',
   icon: 'icon.png',
