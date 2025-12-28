@@ -9,12 +9,10 @@
 - Added refresh button for accounts dropdown in config.html
 
 ### Added
-- Wildcard model configuration in install.js for all 9 providers
-- `check_provider_endpoint: true` in LiteLLM config for dynamic model discovery
 - `/emulator/active` endpoint to show currently running emulated models
 
 ### Fixed
-- Models now fetched from LiteLLM proxy `/v1/models` endpoint (not SDK)
+- Models added dynamically via `/model/new` when emulator starts
 - Removed LiteLLM SDK dependency from server.py (uses only proxy HTTP endpoints)
 
 ## [2.0.0-beta.6] - 2025-12-27
