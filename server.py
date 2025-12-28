@@ -128,16 +128,15 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
                     "hasApiKey": has_account or has_env
                 })
 
-            # Get models from LiteLLM
+            # Models are loaded dynamically when provider is selected via /models endpoint
             models = []
+
+            # Check if emulator is running
+            health = litellm_request("/health")
+            provider_online = "error" not in health
+
             model_info = litellm_request("/model/info")
-            if "data" in model_info:
-                for m in model_info["data"]:
-                    models.append({
-                        "id": m.get("model_name", ""),
-                        "label": m.get("model_name", ""),
-                        "provider": ""
-                    })
+            emulator_active = provider_online and "data" in model_info and len(model_info["data"]) > 0
 
             self.send_json({
                 "accounts": safe_accounts,
@@ -145,8 +144,8 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
                 "models": models,
                 "presets": [],
                 "config": {},
-                "emulatorActive": False,
-                "providerOnline": True
+                "emulatorActive": emulator_active,
+                "providerOnline": provider_online
             })
 
         elif path == "/emulator/status":
@@ -170,20 +169,57 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
             online = "error" not in health
             self.send_json({"online": online, "message": "LiteLLM is running" if online else "LiteLLM offline"})
 
-        elif path == "/models":
-            provider = query.get("provider", [""])[0]
+        elif path == "/emulator/active":
+            # Return currently active/emulated models from LiteLLM
             model_info = litellm_request("/model/info")
-            models = []
+            active_models = []
             if "data" in model_info:
                 for m in model_info["data"]:
                     model_name = m.get("model_name", "")
                     litellm_model = m.get("litellm_params", {}).get("model", "")
-                    models.append({
-                        "id": model_name,
-                        "label": f"{model_name} → {litellm_model}" if litellm_model else model_name,
-                        "provider": "",
-                        "providerName": ""
+                    active_models.append({
+                        "emulatedName": model_name,
+                        "actualModel": litellm_model,
+                        "id": m.get("model_info", {}).get("id", model_name)
                     })
+            self.send_json({"active": active_models, "count": len(active_models)})
+
+        elif path == "/models":
+            provider = query.get("provider", [""])[0]
+            models = []
+
+            # Query LiteLLM proxy for available models
+            result = litellm_request("/v1/models")
+            if "data" in result:
+                provider_info = next((p for p in PROVIDERS if p["id"] == provider), None) if provider else None
+                prefix = provider_info["prefix"] if provider_info else ""
+
+                for m in result["data"]:
+                    model_id = m.get("id", "")
+                    # Filter by provider if specified
+                    if provider:
+                        if prefix and model_id.startswith(prefix):
+                            models.append({
+                                "id": model_id[len(prefix):],
+                                "label": model_id[len(prefix):],
+                                "provider": provider,
+                                "providerName": provider_info["name"] if provider_info else provider
+                            })
+                        elif not prefix and "/" not in model_id:
+                            models.append({
+                                "id": model_id,
+                                "label": model_id,
+                                "provider": provider,
+                                "providerName": provider_info["name"] if provider_info else provider
+                            })
+                    else:
+                        models.append({
+                            "id": model_id,
+                            "label": model_id,
+                            "provider": "",
+                            "providerName": ""
+                        })
+
             self.send_json({"models": models})
 
         elif path == "/" or path == "":

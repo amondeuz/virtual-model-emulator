@@ -735,7 +735,8 @@
 
     providerSelect.addEventListener('change', function() {
       modelSelect.value = '';
-      modelDropdown.refreshOptions();
+      // Fetch models for the selected provider
+      refreshModels(false);
     });
 
     testConnectionBtn.addEventListener('click', testConnection);
