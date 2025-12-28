@@ -67,14 +67,14 @@ def litellm_request(path, method="GET", data=None):
 
 # Providers sorted alphabetically by name
 PROVIDERS = [
-    {"id": "aiml", "name": "AI/ML API", "envVar": "AIML_API_KEY", "prefix": "aiml_api/"},
+    {"id": "aiml", "name": "AI/ML API", "envVar": "AIML_API_KEY", "prefix": "aiml/"},
     {"id": "bytez", "name": "Bytez", "envVar": "BYTEZ_API_KEY", "prefix": "bytez/"},
     {"id": "cerebras", "name": "Cerebras", "envVar": "CEREBRAS_API_KEY", "prefix": "cerebras/"},
     {"id": "cloudflare", "name": "Cloudflare Workers AI", "envVar": "CLOUDFLARE_API_KEY", "prefix": "cloudflare/"},
     {"id": "deepseek", "name": "DeepSeek", "envVar": "DEEPSEEK_API_KEY", "prefix": "deepseek/"},
     {"id": "gemini", "name": "Google Gemini", "envVar": "GEMINI_API_KEY", "prefix": "gemini/"},
     {"id": "groq", "name": "Groq", "envVar": "GROQ_API_KEY", "prefix": "groq/"},
-    {"id": "huggingface", "name": "Hugging Face", "envVar": "HUGGINGFACE_API_KEY", "prefix": "huggingface/"},
+    {"id": "huggingface", "name": "Hugging Face", "envVar": "HF_TOKEN", "prefix": "huggingface/"},
     {"id": "openrouter", "name": "OpenRouter", "envVar": "OPENROUTER_API_KEY", "prefix": "openrouter/"},
 ]
 
