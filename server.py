@@ -66,16 +66,15 @@ def litellm_request(path, method="GET", data=None):
         return {"error": str(e)}
 
 PROVIDERS = [
-    {"id": "openai", "name": "OpenAI", "envVar": "OPENAI_API_KEY", "prefix": ""},
-    {"id": "anthropic", "name": "Anthropic", "envVar": "ANTHROPIC_API_KEY", "prefix": "anthropic/"},
-    {"id": "groq", "name": "Groq", "envVar": "GROQ_API_KEY", "prefix": "groq/"},
-    {"id": "mistral", "name": "Mistral", "envVar": "MISTRAL_API_KEY", "prefix": "mistral/"},
-    {"id": "google", "name": "Google (Gemini)", "envVar": "GEMINI_API_KEY", "prefix": "gemini/"},
-    {"id": "cohere", "name": "Cohere", "envVar": "COHERE_API_KEY", "prefix": "cohere/"},
-    {"id": "together_ai", "name": "Together AI", "envVar": "TOGETHER_API_KEY", "prefix": "together_ai/"},
-    {"id": "openrouter", "name": "OpenRouter", "envVar": "OPENROUTER_API_KEY", "prefix": "openrouter/"},
-    {"id": "deepseek", "name": "DeepSeek", "envVar": "DEEPSEEK_API_KEY", "prefix": "deepseek/"},
     {"id": "cerebras", "name": "Cerebras", "envVar": "CEREBRAS_API_KEY", "prefix": "cerebras/"},
+    {"id": "groq", "name": "Groq", "envVar": "GROQ_API_KEY", "prefix": "groq/"},
+    {"id": "bytez", "name": "Bytez", "envVar": "BYTEZ_API_KEY", "prefix": "bytez/"},
+    {"id": "deepseek", "name": "DeepSeek", "envVar": "DEEPSEEK_API_KEY", "prefix": "deepseek/"},
+    {"id": "gemini", "name": "Google Gemini", "envVar": "GEMINI_API_KEY", "prefix": "gemini/"},
+    {"id": "huggingface", "name": "Hugging Face", "envVar": "HUGGINGFACE_API_KEY", "prefix": "huggingface/"},
+    {"id": "openrouter", "name": "OpenRouter", "envVar": "OPENROUTER_API_KEY", "prefix": "openrouter/"},
+    {"id": "aiml", "name": "AI/ML API", "envVar": "AIML_API_KEY", "prefix": "aiml_api/"},
+    {"id": "cloudflare", "name": "Cloudflare Workers AI", "envVar": "CLOUDFLARE_API_KEY", "prefix": "cloudflare/"},
 ]
 
 class APIHandler(http.server.SimpleHTTPRequestHandler):

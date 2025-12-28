@@ -82,16 +82,15 @@
       font-weight: bold;
       font-size: 16px;
     }
-    .provider-icon.openai { background: linear-gradient(135deg, #10a37f 0%, #0d8c6c 100%); }
-    .provider-icon.anthropic { background: linear-gradient(135deg, #d97706 0%, #b45309 100%); }
-    .provider-icon.groq { background: linear-gradient(135deg, #f97316 0%, #ea580c 100%); }
-    .provider-icon.mistral { background: linear-gradient(135deg, #ff7000 0%, #ff5500 100%); }
-    .provider-icon.google { background: linear-gradient(135deg, #4285f4 0%, #34a853 50%, #ea4335 100%); }
-    .provider-icon.cohere { background: linear-gradient(135deg, #39594d 0%, #2d4a3e 100%); }
-    .provider-icon.together_ai { background: linear-gradient(135deg, #0066ff 0%, #0052cc 100%); }
-    .provider-icon.openrouter { background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); }
-    .provider-icon.deepseek { background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); }
     .provider-icon.cerebras { background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); }
+    .provider-icon.groq { background: linear-gradient(135deg, #f97316 0%, #ea580c 100%); }
+    .provider-icon.bytez { background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%); }
+    .provider-icon.deepseek { background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); }
+    .provider-icon.gemini { background: linear-gradient(135deg, #4285f4 0%, #34a853 50%, #ea4335 100%); }
+    .provider-icon.huggingface { background: linear-gradient(135deg, #ff9d00 0%, #ff6b00 100%); }
+    .provider-icon.openrouter { background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); }
+    .provider-icon.aiml { background: linear-gradient(135deg, #10b981 0%, #059669 100%); }
+    .provider-icon.cloudflare { background: linear-gradient(135deg, #f38020 0%, #faad3f 100%); }
 
     .provider-name { font-weight: 600; font-size: 16px; }
     .provider-actions {
@@ -360,16 +359,15 @@
   <script>
     // Provider definitions
     var PROVIDERS = [
-      { id: 'openai', name: 'OpenAI', keyLink: 'https://platform.openai.com/api-keys', initials: 'OA' },
-      { id: 'anthropic', name: 'Anthropic', keyLink: 'https://console.anthropic.com/settings/keys', initials: 'A' },
-      { id: 'groq', name: 'Groq', keyLink: 'https://console.groq.com/keys', initials: 'G' },
-      { id: 'mistral', name: 'Mistral', keyLink: 'https://console.mistral.ai/api-keys/', initials: 'M' },
-      { id: 'google', name: 'Google (Gemini)', keyLink: 'https://aistudio.google.com/app/apikey', initials: 'G' },
-      { id: 'cohere', name: 'Cohere', keyLink: 'https://dashboard.cohere.com/api-keys', initials: 'C' },
-      { id: 'together_ai', name: 'Together AI', keyLink: 'https://api.together.xyz/settings/api-keys', initials: 'T' },
-      { id: 'openrouter', name: 'OpenRouter', keyLink: 'https://openrouter.ai/keys', initials: 'OR' },
+      { id: 'cerebras', name: 'Cerebras', keyLink: 'https://cloud.cerebras.ai/platform', initials: 'CB' },
+      { id: 'groq', name: 'Groq', keyLink: 'https://console.groq.com/keys', initials: 'GQ' },
+      { id: 'bytez', name: 'Bytez', keyLink: 'https://bytez.com/', initials: 'BZ' },
       { id: 'deepseek', name: 'DeepSeek', keyLink: 'https://platform.deepseek.com/api_keys', initials: 'DS' },
-      { id: 'cerebras', name: 'Cerebras', keyLink: 'https://cloud.cerebras.ai/platform', initials: 'CB' }
+      { id: 'gemini', name: 'Google Gemini', keyLink: 'https://aistudio.google.com/app/apikey', initials: 'GE' },
+      { id: 'huggingface', name: 'Hugging Face', keyLink: 'https://huggingface.co/settings/tokens', initials: 'HF' },
+      { id: 'openrouter', name: 'OpenRouter', keyLink: 'https://openrouter.ai/keys', initials: 'OR' },
+      { id: 'aiml', name: 'AI/ML API', keyLink: 'https://aimlapi.com/', initials: 'AI' },
+      { id: 'cloudflare', name: 'Cloudflare Workers AI', keyLink: 'https://dash.cloudflare.com/', initials: 'CF' }
     ];
 
     var accounts = [];
