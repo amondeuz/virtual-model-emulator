@@ -65,16 +65,17 @@ def litellm_request(path, method="GET", data=None):
     except Exception as e:
         return {"error": str(e)}
 
+# Providers sorted alphabetically by name
 PROVIDERS = [
-    {"id": "cerebras", "name": "Cerebras", "envVar": "CEREBRAS_API_KEY", "prefix": "cerebras/"},
-    {"id": "groq", "name": "Groq", "envVar": "GROQ_API_KEY", "prefix": "groq/"},
+    {"id": "aiml", "name": "AI/ML API", "envVar": "AIML_API_KEY", "prefix": "aiml_api/"},
     {"id": "bytez", "name": "Bytez", "envVar": "BYTEZ_API_KEY", "prefix": "bytez/"},
+    {"id": "cerebras", "name": "Cerebras", "envVar": "CEREBRAS_API_KEY", "prefix": "cerebras/"},
+    {"id": "cloudflare", "name": "Cloudflare Workers AI", "envVar": "CLOUDFLARE_API_KEY", "prefix": "cloudflare/"},
     {"id": "deepseek", "name": "DeepSeek", "envVar": "DEEPSEEK_API_KEY", "prefix": "deepseek/"},
     {"id": "gemini", "name": "Google Gemini", "envVar": "GEMINI_API_KEY", "prefix": "gemini/"},
+    {"id": "groq", "name": "Groq", "envVar": "GROQ_API_KEY", "prefix": "groq/"},
     {"id": "huggingface", "name": "Hugging Face", "envVar": "HUGGINGFACE_API_KEY", "prefix": "huggingface/"},
     {"id": "openrouter", "name": "OpenRouter", "envVar": "OPENROUTER_API_KEY", "prefix": "openrouter/"},
-    {"id": "aiml", "name": "AI/ML API", "envVar": "AIML_API_KEY", "prefix": "aiml_api/"},
-    {"id": "cloudflare", "name": "Cloudflare Workers AI", "envVar": "CLOUDFLARE_API_KEY", "prefix": "cloudflare/"},
 ]
 
 class APIHandler(http.server.SimpleHTTPRequestHandler):

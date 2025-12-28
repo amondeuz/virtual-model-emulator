@@ -1,5 +1,22 @@
 # Changelog
 
+## [2.0.0-beta.7] - 2025-12-28
+
+### Changed
+- Updated provider list to 9 specific providers: AI/ML API, Bytez, Cerebras, Cloudflare Workers AI, DeepSeek, Google Gemini, Groq, Hugging Face, OpenRouter
+- All dropdowns now sorted alphabetically
+- Provider dropdown in connect.html now uses search-as-you-type (matches config.html)
+- Added refresh button for accounts dropdown in config.html
+
+### Added
+- Wildcard model configuration in install.js for all 9 providers
+- `check_provider_endpoint: true` in LiteLLM config for dynamic model discovery
+- `/emulator/active` endpoint to show currently running emulated models
+
+### Fixed
+- Models now fetched from LiteLLM proxy `/v1/models` endpoint (not SDK)
+- Removed LiteLLM SDK dependency from server.py (uses only proxy HTTP endpoints)
+
 ## [2.0.0-beta.6] - 2025-12-27
 
 ### Changed

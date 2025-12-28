@@ -21,18 +21,22 @@ module.exports = {
 import secrets
 key = 'sk-' + secrets.token_hex(16)
 config = '''model_list:
-  - model_name: cerebras-wildcard
+  - model_name: aiml-wildcard
     litellm_params:
-      model: cerebras/*
-      api_key: os.environ/CEREBRAS_API_KEY
-  - model_name: groq-wildcard
-    litellm_params:
-      model: groq/*
-      api_key: os.environ/GROQ_API_KEY
+      model: aiml_api/*
+      api_key: os.environ/AIML_API_KEY
   - model_name: bytez-wildcard
     litellm_params:
       model: bytez/*
       api_key: os.environ/BYTEZ_API_KEY
+  - model_name: cerebras-wildcard
+    litellm_params:
+      model: cerebras/*
+      api_key: os.environ/CEREBRAS_API_KEY
+  - model_name: cloudflare-wildcard
+    litellm_params:
+      model: cloudflare/*
+      api_key: os.environ/CLOUDFLARE_API_KEY
   - model_name: deepseek-wildcard
     litellm_params:
       model: deepseek/*
@@ -41,6 +45,10 @@ config = '''model_list:
     litellm_params:
       model: gemini/*
       api_key: os.environ/GEMINI_API_KEY
+  - model_name: groq-wildcard
+    litellm_params:
+      model: groq/*
+      api_key: os.environ/GROQ_API_KEY
   - model_name: huggingface-wildcard
     litellm_params:
       model: huggingface/*
@@ -49,14 +57,6 @@ config = '''model_list:
     litellm_params:
       model: openrouter/*
       api_key: os.environ/OPENROUTER_API_KEY
-  - model_name: aiml-wildcard
-    litellm_params:
-      model: aiml_api/*
-      api_key: os.environ/AIML_API_KEY
-  - model_name: cloudflare-wildcard
-    litellm_params:
-      model: cloudflare/*
-      api_key: os.environ/CLOUDFLARE_API_KEY
 
 general_settings:
   master_key: ''' + key + '''

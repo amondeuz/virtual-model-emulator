@@ -260,12 +260,13 @@
       margin-top: 20px;
     }
 
-    /* Provider Select with Icons */
-    .provider-option {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
+    /* Search Dropdown */
+    .search-dropdown { position: relative; width: 100%; }
+    .dropdown-menu { position: absolute; top: calc(100% + 4px); left: 0; right: 0; background: #fff; border: 1px solid #d1d5db; border-radius: 8px; box-shadow: 0 8px 20px rgba(0,0,0,0.1); max-height: 260px; overflow-y: auto; padding: 6px 0; z-index: 10; display: none; }
+    .dropdown-menu.open { display: block; }
+    .dropdown-item { padding: 10px 12px; cursor: pointer; font-size: 14px; display: flex; align-items: center; gap: 10px; }
+    .dropdown-item:hover { background: #f3f7ff; }
+    .dropdown-item .provider-icon-small { width: 28px; height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 11px; }
 
     /* Status Messages */
     .status-message {
@@ -330,9 +331,10 @@
 
       <div class="form-group">
         <label for="provider-select">Provider</label>
-        <select id="provider-select">
-          <option value="">-- Select a provider --</option>
-        </select>
+        <div class="search-dropdown">
+          <input type="text" id="provider-select" placeholder="Search providers..." autocomplete="off">
+          <div id="provider-dropdown" class="dropdown-menu"></div>
+        </div>
       </div>
 
       <div class="form-group">
@@ -357,21 +359,22 @@
   </div>
 
   <script>
-    // Provider definitions
+    // Provider definitions - sorted alphabetically
     var PROVIDERS = [
-      { id: 'cerebras', name: 'Cerebras', keyLink: 'https://cloud.cerebras.ai/platform', initials: 'CB' },
-      { id: 'groq', name: 'Groq', keyLink: 'https://console.groq.com/keys', initials: 'GQ' },
+      { id: 'aiml', name: 'AI/ML API', keyLink: 'https://aimlapi.com/', initials: 'AI' },
       { id: 'bytez', name: 'Bytez', keyLink: 'https://bytez.com/', initials: 'BZ' },
+      { id: 'cerebras', name: 'Cerebras', keyLink: 'https://cloud.cerebras.ai/platform', initials: 'CB' },
+      { id: 'cloudflare', name: 'Cloudflare Workers AI', keyLink: 'https://dash.cloudflare.com/', initials: 'CF' },
       { id: 'deepseek', name: 'DeepSeek', keyLink: 'https://platform.deepseek.com/api_keys', initials: 'DS' },
       { id: 'gemini', name: 'Google Gemini', keyLink: 'https://aistudio.google.com/app/apikey', initials: 'GE' },
+      { id: 'groq', name: 'Groq', keyLink: 'https://console.groq.com/keys', initials: 'GQ' },
       { id: 'huggingface', name: 'Hugging Face', keyLink: 'https://huggingface.co/settings/tokens', initials: 'HF' },
-      { id: 'openrouter', name: 'OpenRouter', keyLink: 'https://openrouter.ai/keys', initials: 'OR' },
-      { id: 'aiml', name: 'AI/ML API', keyLink: 'https://aimlapi.com/', initials: 'AI' },
-      { id: 'cloudflare', name: 'Cloudflare Workers AI', keyLink: 'https://dash.cloudflare.com/', initials: 'CF' }
+      { id: 'openrouter', name: 'OpenRouter', keyLink: 'https://openrouter.ai/keys', initials: 'OR' }
     ];
 
     var accounts = [];
     var editMode = {};  // Track which provider is in edit mode
+    var selectedProvider = null;  // Currently selected provider for the modal
 
     function showStatus(message, type) {
       var container = document.getElementById('status-container');
@@ -480,34 +483,95 @@
       });
     }
 
-    function populateProviderSelect() {
-      var select = document.getElementById('provider-select');
-      select.innerHTML = '<option value="">-- Select a provider --</option>';
+    function getProviderIconClass(id) {
+      return 'provider-icon-small ' + id;
+    }
 
-      PROVIDERS.forEach(function(provider) {
-        var opt = document.createElement('option');
-        opt.value = provider.id;
-        opt.textContent = provider.name;
-        select.appendChild(opt);
+    function setupProviderDropdown() {
+      var input = document.getElementById('provider-select');
+      var dropdown = document.getElementById('provider-dropdown');
+
+      function renderOptions(filter) {
+        var query = (filter || '').toLowerCase();
+        var filtered = PROVIDERS.filter(function(p) {
+          return p.name.toLowerCase().indexOf(query) !== -1 || p.id.toLowerCase().indexOf(query) !== -1;
+        });
+
+        dropdown.innerHTML = '';
+        filtered.forEach(function(provider) {
+          var item = document.createElement('div');
+          item.className = 'dropdown-item';
+          item.innerHTML = '<div class="' + getProviderIconClass(provider.id) + '" style="background:' + getProviderGradient(provider.id) + '">' + provider.initials + '</div>' +
+            '<span>' + provider.name + '</span>';
+          item.addEventListener('click', function() {
+            selectProvider(provider);
+          });
+          dropdown.appendChild(item);
+        });
+
+        dropdown.classList.toggle('open', filtered.length > 0);
+      }
+
+      input.addEventListener('focus', function() {
+        if (!input.disabled) renderOptions(input.value);
       });
+
+      input.addEventListener('input', function() {
+        selectedProvider = null;
+        renderOptions(input.value);
+      });
+
+      input.addEventListener('blur', function() {
+        setTimeout(function() { dropdown.classList.remove('open'); }, 150);
+      });
+
+      input.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') dropdown.classList.remove('open');
+      });
+    }
+
+    function getProviderGradient(id) {
+      var gradients = {
+        aiml: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+        bytez: 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)',
+        cerebras: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)',
+        cloudflare: 'linear-gradient(135deg, #f38020 0%, #faad3f 100%)',
+        deepseek: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
+        gemini: 'linear-gradient(135deg, #4285f4 0%, #34a853 50%, #ea4335 100%)',
+        groq: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
+        huggingface: 'linear-gradient(135deg, #ff9d00 0%, #ff6b00 100%)',
+        openrouter: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)'
+      };
+      return gradients[id] || 'linear-gradient(135deg, #6b7280 0%, #4b5563 100%)';
+    }
+
+    function selectProvider(provider) {
+      selectedProvider = provider;
+      document.getElementById('provider-select').value = provider.name;
+      document.getElementById('provider-dropdown').classList.remove('open');
+      document.getElementById('api-key-link').href = provider.keyLink || '#';
     }
 
     function openAddModal() {
       document.getElementById('modal-title').textContent = 'Add Provider Account';
-      document.getElementById('provider-select').value = '';
-      document.getElementById('provider-select').disabled = false;
+      var input = document.getElementById('provider-select');
+      input.value = '';
+      input.disabled = false;
+      selectedProvider = null;
       document.getElementById('account-name-input').value = '';
       document.getElementById('api-key-input').value = '';
       document.getElementById('api-key-link').href = '#';
       document.getElementById('provider-modal').classList.add('active');
-      document.getElementById('provider-select').focus();
+      input.focus();
     }
 
     function openAddModalForProvider(providerId) {
       var provider = getProviderInfo(providerId);
       document.getElementById('modal-title').textContent = 'Add ' + provider.name + ' Account';
-      document.getElementById('provider-select').value = providerId;
-      document.getElementById('provider-select').disabled = true;
+      var input = document.getElementById('provider-select');
+      input.value = provider.name;
+      input.disabled = true;
+      selectedProvider = provider;
       document.getElementById('account-name-input').value = '';
       document.getElementById('api-key-input').value = '';
       document.getElementById('api-key-link').href = provider.keyLink || '#';
@@ -517,6 +581,7 @@
 
     function closeModal() {
       document.getElementById('provider-modal').classList.remove('active');
+      document.getElementById('provider-dropdown').classList.remove('open');
     }
 
     function toggleEditMode(providerId) {
@@ -569,7 +634,7 @@
     }
 
     function saveAccount() {
-      var provider = document.getElementById('provider-select').value;
+      var provider = selectedProvider ? selectedProvider.id : null;
       var accountName = document.getElementById('account-name-input').value.trim();
       var apiKey = document.getElementById('api-key-input').value.trim();
 
@@ -615,14 +680,6 @@
       });
     }
 
-    // Update API key link when provider changes
-    document.getElementById('provider-select').addEventListener('change', function() {
-      var provider = PROVIDERS.find(function(p) { return p.id === this.value; }.bind(this));
-      if (provider) {
-        document.getElementById('api-key-link').href = provider.keyLink;
-      }
-    });
-
     // Close modal on Escape key
     document.addEventListener('keydown', function(e) {
       if (e.key === 'Escape') closeModal();
@@ -634,7 +691,7 @@
     });
 
     // Initialize
-    populateProviderSelect();
+    setupProviderDropdown();
     loadAccounts();
   </script>
 </body>
