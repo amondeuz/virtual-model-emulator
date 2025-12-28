@@ -68,9 +68,12 @@
     <!-- Step 1: Account -->
     <div class="section">
       <label><span class="step-number">1</span> Account <span class="muted" style="font-weight:400">Which credential to use</span></label>
-      <select id="account-select">
-        <option value="">-- Select an account --</option>
-      </select>
+      <div class="row">
+        <select id="account-select">
+          <option value="">-- Select an account --</option>
+        </select>
+        <button id="refresh-accounts" class="secondary" title="Refresh accounts">&#8635;</button>
+      </div>
       <p class="hint">Select from connected accounts. If you have multiple for the same provider, choose which credential to use.</p>
     </div>
 
@@ -253,10 +256,24 @@
         byProvider[acc.provider].push(acc);
       });
 
-      // Create options grouped by provider
-      Object.keys(byProvider).forEach(function(provId) {
+      // Sort provider keys alphabetically by provider name
+      var sortedProviderIds = Object.keys(byProvider).sort(function(a, b) {
+        var provA = providers.find(function(p) { return p.id === a; });
+        var provB = providers.find(function(p) { return p.id === b; });
+        var nameA = provA ? provA.name : a;
+        var nameB = provB ? provB.name : b;
+        return nameA.localeCompare(nameB);
+      });
+
+      // Create options grouped by provider (sorted)
+      sortedProviderIds.forEach(function(provId) {
         var provider = providers.find(function(p) { return p.id === provId; });
         var providerName = provider ? provider.name : provId;
+
+        // Sort accounts within provider alphabetically
+        byProvider[provId].sort(function(a, b) {
+          return a.accountName.localeCompare(b.accountName);
+        });
 
         byProvider[provId].forEach(function(acc) {
           var opt = document.createElement('option');
@@ -285,8 +302,13 @@
       var parts = selectedValue.split('|');
       var selectedProvider = parts[1] || '';
 
+      // Sort providers alphabetically by name
+      var sortedProviders = providers.slice().sort(function(a, b) {
+        return a.name.localeCompare(b.name);
+      });
+
       // Filter providers based on selected account
-      providers.forEach(function(provider) {
+      sortedProviders.forEach(function(provider) {
         // If an account is selected, only show that provider
         if (selectedProvider && provider.id !== selectedProvider) {
           return;
@@ -735,13 +757,19 @@
 
     providerSelect.addEventListener('change', function() {
       modelSelect.value = '';
-      modelDropdown.refreshOptions();
+      // Fetch models for the selected provider
+      refreshModels(false);
     });
 
     testConnectionBtn.addEventListener('click', testConnection);
     refreshModelsBtn.addEventListener('click', function() { refreshModels(true); });
     startStopBtn.addEventListener('click', handleStartStop);
     refreshHealthBtn.addEventListener('click', refreshHealth);
+    document.getElementById('refresh-accounts').addEventListener('click', function() {
+      fetchState().then(function() {
+        setMessage('Accounts refreshed.');
+      });
+    });
 
     var modelDropdown = setupSearchDropdown(
       modelSelect,

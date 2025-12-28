@@ -11,13 +11,62 @@ module.exports = {
         ],
       }
     },
-    // Generate config.yaml with random master key
+    // Generate config.yaml with wildcard models for all providers
     {
       method: "shell.run",
       params: {
         venv: "env",
         message: [
-          "python -c \"import secrets; key = 'sk-' + secrets.token_hex(16); open('config.yaml', 'w').write(f'model_list: []\\n\\ngeneral_settings:\\n  master_key: {key}\\n\\nlitellm_settings:\\n  drop_params: true\\n')\""
+          `python -c "
+import secrets
+key = 'sk-' + secrets.token_hex(16)
+config = '''model_list:
+  - model_name: aiml-wildcard
+    litellm_params:
+      model: aiml_api/*
+      api_key: os.environ/AIML_API_KEY
+  - model_name: bytez-wildcard
+    litellm_params:
+      model: bytez/*
+      api_key: os.environ/BYTEZ_API_KEY
+  - model_name: cerebras-wildcard
+    litellm_params:
+      model: cerebras/*
+      api_key: os.environ/CEREBRAS_API_KEY
+  - model_name: cloudflare-wildcard
+    litellm_params:
+      model: cloudflare/*
+      api_key: os.environ/CLOUDFLARE_API_KEY
+  - model_name: deepseek-wildcard
+    litellm_params:
+      model: deepseek/*
+      api_key: os.environ/DEEPSEEK_API_KEY
+  - model_name: gemini-wildcard
+    litellm_params:
+      model: gemini/*
+      api_key: os.environ/GEMINI_API_KEY
+  - model_name: groq-wildcard
+    litellm_params:
+      model: groq/*
+      api_key: os.environ/GROQ_API_KEY
+  - model_name: huggingface-wildcard
+    litellm_params:
+      model: huggingface/*
+      api_key: os.environ/HUGGINGFACE_API_KEY
+  - model_name: openrouter-wildcard
+    litellm_params:
+      model: openrouter/*
+      api_key: os.environ/OPENROUTER_API_KEY
+
+general_settings:
+  master_key: ''' + key + '''
+
+litellm_settings:
+  drop_params: true
+  check_provider_endpoint: true
+'''
+open('config.yaml', 'w').write(config)
+"`
         ],
       }
     },
