@@ -1,4 +1,4 @@
-# Virtual Model Emulator v2.0.0-beta.6
+# Virtual Model Emulator v2.0.0-beta.7
 
 A Pinokio app that provides a local OpenAI-compatible HTTP endpoint with **model name emulation** powered by LiteLLM proxy server. Route any model name to any provider - make Pinokio apps think they're talking to one model while actually using another.
 
@@ -6,7 +6,7 @@ A Pinokio app that provides a local OpenAI-compatible HTTP endpoint with **model
 
 A **model name emulator** that translates model names for Pinokio applications. Configure your preferred provider and model, set an emulated model name, and Pinokio apps will believe they're using that model while actually getting responses from your configured provider.
 
-**Example**: Configure the emulator to respond to `llama3` requests while actually routing them to Anthropic Claude 3.5 Sonnet.
+**Example**: Configure the emulator to respond to `gpt-4` requests while actually routing them to DeepSeek or Groq.
 
 ## Architecture
 
@@ -35,12 +35,12 @@ Request Flow:
 
 ### Key Features
 
-- **Direct LiteLLM Proxy**: No wrapper server - LiteLLM runs directly
-- **Simple UI**: Single-page configuration at `http://localhost:8765/config.html`
-- **Secure Key Handling**: API keys sent directly to LiteLLM, never stored in browser
-- **4-Step Configuration**: Provider → Model → API Key → Emulated Name
+- **LiteLLM Proxy**: Runs LiteLLM as the model routing engine
+- **Two-Page UI**: Connect page for accounts, Emulator page for model configuration
+- **Secure Key Handling**: API keys stored server-side, never in browser localStorage
+- **4-Step Configuration**: Account → Provider → Model → Emulated Name
 - **OpenAI-Compatible Endpoint**: LiteLLM serves at `/v1/chat/completions`
-- **100+ Providers**: Access OpenAI, Anthropic, Groq, Mistral, Google Gemini, and more
+- **9 Providers**: AI/ML API, Bytez, Cerebras, Cloudflare, DeepSeek, Gemini, Groq, Hugging Face, OpenRouter
 
 ## Installation
 
@@ -67,28 +67,38 @@ litellm --config config.yaml --port 11434 --host 127.0.0.1
 
 ## Configuration
 
-### Configuration UI
+### Connect Page
 
-Access the configuration UI at:
+Access the Connect page to manage provider accounts:
+```
+http://localhost:8765/connect.html
+```
+
+Add your API keys here - they're stored securely on the server, not in your browser.
+
+### Emulator Page
+
+Access the Emulator configuration at:
 ```
 http://localhost:8765/config.html
 ```
 
 **4-Step Configuration:**
-1. **Provider** - Select the AI provider (OpenAI, Anthropic, etc.)
-2. **Model** - Enter the actual model ID from that provider
-3. **API Key** - Paste your API key (sent to LiteLLM, not stored in browser)
+1. **Account** - Select which saved account/credential to use
+2. **Provider** - The AI provider (auto-filtered by account)
+3. **Model** - The actual model from that provider
 4. **Emulated Model Name** - What Pinokio apps will request
 
 ### Workflow
 
-1. **Open the UI** via Pinokio
-2. **Select a Provider** from the dropdown
-3. **Enter the model name** for that provider
-4. **Paste your API key** (link provided to get key from provider)
-5. **Choose an Emulated Model Name** (e.g., "llama3")
-6. Click **Add Model**
-7. Configure your Pinokio app to use the emulated model name
+1. **Open Connect page** via Pinokio menu
+2. **Add provider accounts** with your API keys
+3. **Open Emulator page** via Pinokio menu
+4. **Select an account** from the dropdown
+5. **Choose a model** from the provider
+6. **Set an emulated model name** (e.g., "gpt-4")
+7. Click **Start** to begin routing
+8. Configure your Pinokio app to use the emulated model name
 
 ## Usage
 
@@ -140,29 +150,31 @@ print(response.choices[0].message.content)
 
 ## Supported Providers
 
-| Provider | Example Models |
-|----------|----------------|
-| OpenAI | gpt-4, gpt-4-turbo, gpt-4o, o1 |
-| Anthropic | claude-3-5-sonnet, claude-3-opus |
-| Groq | llama-3.3-70b, mixtral-8x7b |
-| Mistral | mistral-large, codestral |
-| Google | gemini-1.5-pro, gemini-2.0-flash |
-| Cohere | command-r-plus, command-r |
-| Together AI | llama-3.3-70b, qwen-2.5-72b |
-| OpenRouter | any model via OpenRouter |
-| DeepSeek | deepseek-chat, deepseek-coder |
-| Cerebras | llama-3.1-8b, llama-3.1-70b |
+| Provider | Prefix | Example Models |
+|----------|--------|----------------|
+| AI/ML API | `aiml_api/` | Various models via aimlapi.com |
+| Bytez | `bytez/` | Models via bytez.com |
+| Cerebras | `cerebras/` | llama3.1-8b, llama3.1-70b |
+| Cloudflare Workers AI | `cloudflare/` | @cf/meta/llama-3-8b-instruct |
+| DeepSeek | `deepseek/` | deepseek-chat, deepseek-coder |
+| Google Gemini | `gemini/` | gemini-1.5-pro, gemini-2.0-flash |
+| Groq | `groq/` | llama-3.3-70b-versatile, mixtral-8x7b |
+| Hugging Face | `huggingface/` | Various open models |
+| OpenRouter | `openrouter/` | Any model via OpenRouter |
 
 ## File Structure
 
 ```
 /virtual-model-emulator
 ├── public/
-│   └── config.html       # Configuration UI
-├── server.py             # Static file server for UI
+│   ├── config.html       # Emulator configuration UI
+│   └── connect.html      # Provider account management UI
+├── config/
+│   └── accounts.json     # Saved accounts (server-side, gitignored)
+├── server.py             # Backend API server + static file serving
 ├── start.js              # Pinokio start script
 ├── install.js            # Pinokio install script
-├── pinokio.js            # Pinokio app definition
+├── pinokio.js            # Pinokio app definition (v5.3.0)
 ├── config.yaml           # LiteLLM config (generated)
 ├── requirements.txt      # Python dependencies (litellm[proxy])
 ├── CHANGELOG.md          # Version history
@@ -171,8 +183,8 @@ print(response.choices[0].message.content)
 
 ## Security
 
-- **API keys are NOT stored in the browser** - entered when adding models
-- **Keys sent directly to LiteLLM** which stores them server-side
+- **API keys stored server-side** in `config/accounts.json` (gitignored)
+- **Keys never stored in browser** localStorage or cookies
 - **Master key** protects LiteLLM admin endpoints
 - **Nothing leaves your machine** except authorized API requests to providers
 
