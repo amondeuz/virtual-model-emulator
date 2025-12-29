@@ -701,10 +701,10 @@
           }
 
           modelDropdown.refreshOptions();
-          setEmulatorIndicator(state.emulatorActive);
+          setEmulatorIndicator(state.emulatorActive === true);
 
           var currentProvider = providers.find(function(p) { return p.id === providerSelect.value; });
-          setProviderIndicator(state.providerOnline !== false, currentProvider ? currentProvider.name : 'Provider');
+          setProviderIndicator(state.providerOnline === true, currentProvider ? currentProvider.name : 'Provider');
 
           setMessage('Ready.');
           return refreshHealth();
