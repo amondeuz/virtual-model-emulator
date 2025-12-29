@@ -1,116 +1,77 @@
 module.exports = {
   run: [
     {
-      method: "shell.run",
+      method: "fs.write",
       params: {
-        venv: "env",
-        message: `python -c "
-# -*- coding: utf-8 -*-
+        path: "full_install.py",
+        text: `# -*- coding: utf-8 -*-
 import sys, os, re, subprocess, secrets, pathlib, site, json
+
+def run_command(cmd, desc=""):
+    """Helper to run a command and print status."""
+    if desc:
+        print(f"[INFO] {desc}")
+    result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+    if result.returncode != 0:
+        print(f"[WARNING] Command may have had issues: {result.stderr[:200]}")
+    return result
 
 print('='*60)
 print('Virtual Model Emulator - Installation')
 print('='*60)
 
-# ============================================================================
 # 1. INSTALL/UPGRADE DEPENDENCIES
-# ============================================================================
-print('\\n[1/3] Installing/Upgrading dependencies...')
-subprocess.run([sys.executable, '-m', 'pip', 'install', '--upgrade', 'pip'], check=False)
-subprocess.run([sys.executable, '-m', 'pip', 'install', '--upgrade', 'litellm[proxy]'], check=False)
-subprocess.run([sys.executable, '-m', 'pip', 'install', '--upgrade', 'prisma'], check=False)
+print('\\n[1/4] Installing/Upgrading dependencies...')
+run_command(f'"{sys.executable}" -m pip install --upgrade pip', "Upgrading pip")
+run_command(f'"{sys.executable}" -m pip install --upgrade litellm[proxy]', "Installing litellm[proxy]")
+run_command(f'"{sys.executable}" -m pip install --upgrade prisma', "Installing prisma")
 print('[OK] Dependencies installed.')
 
-# ============================================================================
 # 2. MODIFY PRISMA SCHEMA FOR SQLITE
-# ============================================================================
-print('\\n[2/3] Configuring database for SQLite...')
-
-# Find the litellm_proxy_extras package
+print('\\n[2/4] Configuring database for SQLite...')
 schema_path = None
-search_paths = sys.path + site.getsitepackages()
-
-for p in search_paths:
+for p in sys.path:
     if p and 'site-packages' in p:
         test_path = os.path.join(p, 'litellm_proxy_extras', 'schema.prisma')
         if os.path.exists(test_path):
             schema_path = test_path
             break
 
-if not schema_path:
-    # Last resort: search entire Python environment
-    import pip
-    dist = pip.get_installed_distributions()
-    for d in dist:
-        if d.key == 'litellm':
-            # Use d.location to find the package
-            possible = os.path.join(d.location, 'litellm_proxy_extras', 'schema.prisma')
-            if os.path.exists(possible):
-                schema_path = possible
-                break
-
-if not schema_path:
-    print('[WARNING] Could not find schema.prisma. Database features may not work.')
-    schema_path = 'schema.prisma'  # Fallback
-
-print(f'Found schema at: {schema_path}')
-
-# Read and modify the schema
-try:
-    with open(schema_path, 'r', encoding='utf-8') as f:
-        content = f.read()
-    
-    # Replace PostgreSQL with SQLite
-    sqlite_config = '''datasource db {
+if schema_path:
+    print(f'Found schema at: {schema_path}')
+    try:
+        with open(schema_path, 'r') as f:
+            content = f.read()
+        
+        sqlite_config = '''datasource db {
   provider = "sqlite"
   url      = "file:./litellm.db"
 }'''
-    
-    # Pattern for datasource block
-    pattern = r'datasource\\s+db\\s*{[^}]+}'
-    new_content = re.sub(pattern, sqlite_config, content, flags=re.DOTALL)
-    
-    # Also replace env(\"DATABASE_URL\") if present
-    new_content = new_content.replace('env(\\"DATABASE_URL\\")', '\\"file:./litellm.db\\"')
-    
-    # Write back
-    with open(schema_path, 'w', encoding='utf-8') as f:
-        f.write(new_content)
-    
-    print('[OK] Schema modified for SQLite.')
-    
-    # Generate Prisma client
-    package_dir = os.path.dirname(schema_path)
-    original_cwd = os.getcwd()
-    os.chdir(package_dir)
-    
-    result = subprocess.run(['prisma', 'generate'], 
-                          capture_output=True, 
-                          text=True, 
-                          shell=False)
-    
-    os.chdir(original_cwd)
-    
-    if result.returncode == 0:
-        print('[OK] Prisma client generated.')
-    else:
-        print(f'[WARNING] Prisma generation: {result.stderr[:200]}')
+        pattern = r'datasource\\s+db\\s*{[^}]+}'
+        new_content = re.sub(pattern, sqlite_config, content, flags=re.DOTALL)
+        new_content = new_content.replace('env("DATABASE_URL")', '"file:./litellm.db"')
         
-except Exception as e:
-    print(f'[WARNING] Schema modification skipped: {e}')
+        with open(schema_path, 'w') as f:
+            f.write(new_content)
+        print('[OK] Schema modified for SQLite.')
+        
+        # Generate client
+        os.chdir(os.path.dirname(schema_path))
+        run_command('prisma generate', "Generating Prisma client")
+        os.chdir(os.path.dirname(__file__))
+        
+    except Exception as e:
+        print(f'[WARNING] Schema step skipped: {e}')
+else:
+    print('[WARNING] Could not find schema.prisma in expected location.')
 
-# ============================================================================
-# 3. GENERATE CONFIG.YAML (Only if missing)
-# ============================================================================
-print('\\n[3/3] Checking configuration...')
-
+# 3. GENERATE CONFIG.YAML (if missing)
+print('\\n[3/4] Checking configuration...')
 config_file = 'config.yaml'
 if os.path.exists(config_file):
-    print('[OK] config.yaml already exists. Keeping current configuration.')
+    print('[OK] config.yaml already exists.')
 else:
-    print('Generating new config.yaml...')
     master_key = 'sk-' + secrets.token_hex(16)
-    
     config_content = f'''model_list:
   - model_name: "cerebras/*"
     litellm_params:
@@ -157,32 +118,28 @@ litellm_settings:
   drop_params: true
   check_provider_endpoint: true
 '''
-    
-    with open(config_file, 'w', encoding='utf-8') as f:
+    with open(config_file, 'w') as f:
         f.write(config_content)
-    
-    print(f'[OK] config.yaml generated with master key.')
+    print(f'[OK] config.yaml generated.')
 
-# ============================================================================
 # 4. CREATE INSTALLATION MARKER
-# ============================================================================
 print('\\n[4/4] Finalizing installation...')
-marker_dir = 'env'
-if not os.path.exists(marker_dir):
-    os.makedirs(marker_dir, exist_ok=True)
-
-with open(os.path.join(marker_dir, '.installed'), 'w') as f:
+os.makedirs('env', exist_ok=True)
+with open('env/.installed', 'w') as f:
     f.write('Installation completed successfully.')
+print('[OK] Installation marker created.')
 
-print('='*60)
+print('\\n' + '='*60)
 print('INSTALLATION COMPLETE')
 print('='*60)
-print('\\nNext steps:')
-print('1. Start the app from the Pinokio menu')
-print('2. Open the Connect page to add provider API keys')
-print('3. Use the Emulator page to configure model routing')
-print('='*60)
-"`
+`
+      }
+    },
+    {
+      method: "shell.run",
+      params: {
+        venv: "env",
+        message: "python full_install.py"
       }
     }
   ]
