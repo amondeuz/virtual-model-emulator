@@ -6,6 +6,9 @@
 - **Critical**: Added SQLite database configuration for LiteLLM dynamic model management
   - Without `database_url`, `/model/new` and `/model/delete` API calls fail with 500 errors
   - Added `database_url: "sqlite:///./litellm.db"` to generated config.yaml
+- **Critical**: Added Prisma installation and generation to install.js
+  - LiteLLM's database features require Prisma ORM
+  - Install script now runs `pip install prisma` and `prisma generate` with correct schema path
 - **Status logic**: Emulator no longer shows "Running" on startup before any configuration
   - Now correctly distinguishes between wildcard passthrough models (e.g., `groq/*`) and explicit emulations
   - Status only shows "Running" when user has started an explicit model mapping
