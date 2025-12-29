@@ -324,9 +324,10 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
             model_info = litellm_request("/model/info")
             if "data" in model_info:
                 for m in model_info["data"]:
-                    model_name = m.get("model_name")
-                    if model_name:
-                        litellm_request("/model/delete", "POST", {"id": model_name})
+                    # Use model_info.id for deletion, fallback to model_name
+                    model_id = m.get("model_info", {}).get("id") or m.get("model_name")
+                    if model_id:
+                        litellm_request("/model/delete", "POST", {"id": model_id})
             self.send_json({"success": True})
 
         elif path == "/config/save":
