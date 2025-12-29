@@ -55,10 +55,23 @@ if schema_path:
             f.write(new_content)
         print('[OK] Schema modified for SQLite.')
         
+        # Delete migration lock file to allow provider switch
+        schema_dir = os.path.dirname(schema_path)
+        migrations_dir = os.path.join(schema_dir, 'prisma', 'migrations')
+        lock_file = os.path.join(migrations_dir, 'migration_lock.toml')
+        if os.path.exists(lock_file):
+            os.remove(lock_file)
+            print('[OK] Removed migration_lock.toml')
+        
         # Generate client
-        os.chdir(os.path.dirname(schema_path))
-        run_command('prisma generate', "Generating Prisma client")
+        os.chdir(schema_dir)
+        result = run_command('prisma generate', "Generating Prisma client")
         os.chdir(os.path.dirname(__file__))
+        
+        if result.returncode == 0:
+            print('[OK] Prisma client generated successfully')
+        else:
+            print('[WARNING] Prisma generate had issues - check output above')
         
     except Exception as e:
         print(f'[WARNING] Schema step skipped: {e}')
