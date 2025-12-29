@@ -107,23 +107,23 @@
       <select id="emulated-model-select">
         <option value="">-- Select or enter custom --</option>
         <optgroup label="Popular Models">
-          <option value="gpt-4">gpt-4 (OpenAI)</option>
-          <option value="gpt-4-turbo">gpt-4-turbo (OpenAI)</option>
-          <option value="gpt-3.5-turbo">gpt-3.5-turbo (OpenAI)</option>
+          <option value="claude-3-haiku">claude-3-haiku (Anthropic)</option>
           <option value="claude-3-opus">claude-3-opus (Anthropic)</option>
           <option value="claude-3-sonnet">claude-3-sonnet (Anthropic)</option>
-          <option value="claude-3-haiku">claude-3-haiku (Anthropic)</option>
-          <option value="llama3-70b">llama3-70b (Meta)</option>
+          <option value="command-r">command-r (Cohere)</option>
+          <option value="command-r-plus">command-r-plus (Cohere)</option>
+          <option value="deepseek-coder">deepseek-coder (DeepSeek)</option>
+          <option value="gemini-1.5-pro">gemini-1.5-pro (Google)</option>
+          <option value="gemini-pro">gemini-pro (Google)</option>
+          <option value="gpt-3.5-turbo">gpt-3.5-turbo (OpenAI)</option>
+          <option value="gpt-4">gpt-4 (OpenAI)</option>
+          <option value="gpt-4-turbo">gpt-4-turbo (OpenAI)</option>
           <option value="llama3-8b">llama3-8b (Meta)</option>
+          <option value="llama3-70b">llama3-70b (Meta)</option>
           <option value="llama3.1-405b">llama3.1-405b (Meta)</option>
           <option value="mistral-large">mistral-large (Mistral)</option>
           <option value="mistral-medium">mistral-medium (Mistral)</option>
           <option value="mixtral-8x7b">mixtral-8x7b (Mistral)</option>
-          <option value="gemini-pro">gemini-pro (Google)</option>
-          <option value="gemini-1.5-pro">gemini-1.5-pro (Google)</option>
-          <option value="command-r-plus">command-r-plus (Cohere)</option>
-          <option value="command-r">command-r (Cohere)</option>
-          <option value="deepseek-coder">deepseek-coder (DeepSeek)</option>
           <option value="qwen-72b">qwen-72b (Alibaba)</option>
         </optgroup>
         <option value="custom">Enter custom model name...</option>
@@ -486,15 +486,6 @@
       var model = modelSelect.value;
       var emulatedModelName = getEmulatedModelName();
 
-      if (!provider) {
-        setMessage('Select a provider first.');
-        return;
-      }
-      if (!model) {
-        setMessage('Select a model first.');
-        return;
-      }
-
       startStopBtn.disabled = true;
       startStopBtn.textContent = emulatorActive ? 'Stopping...' : 'Starting...';
 
@@ -517,6 +508,19 @@
             startStopBtn.disabled = false;
           });
       } else {
+        // Validate inputs for starting
+        if (!provider) {
+          setMessage('Select a provider first.');
+          startStopBtn.disabled = false;
+          startStopBtn.textContent = 'Start';
+          return;
+        }
+        if (!model) {
+          setMessage('Select a model first.');
+          startStopBtn.disabled = false;
+          startStopBtn.textContent = 'Start';
+          return;
+        }
         saveConfig()
           .then(function() {
             return fetch('/emulator/start', {
@@ -766,8 +770,14 @@
     startStopBtn.addEventListener('click', handleStartStop);
     refreshHealthBtn.addEventListener('click', refreshHealth);
     document.getElementById('refresh-accounts').addEventListener('click', function() {
-      fetchState().then(function() {
+      fetchState(true).then(function(state) {
+        accounts = state.accounts || [];
+        providers = state.providers || [];
+        populateAccounts();
+        populateProviders();
         setMessage('Accounts refreshed.');
+      }).catch(function(err) {
+        showError('Failed to refresh accounts: ' + err.message);
       });
     });
 

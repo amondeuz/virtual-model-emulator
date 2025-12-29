@@ -32,13 +32,23 @@ def get_master_key():
     return "sk-litellm-master-key"
 
 def load_accounts():
-    """Load accounts from JSON file."""
+    """Load accounts from JSON file (always reads fresh from disk)."""
     if ACCOUNTS_FILE.exists():
         try:
             return json.loads(ACCOUNTS_FILE.read_text())
         except:
             pass
     return []
+
+def is_wildcard_model(model_name):
+    """Check if a model is a wildcard passthrough (not an explicit emulation)."""
+    return model_name and '*' in model_name
+
+def get_active_emulations(model_info):
+    """Get only explicitly configured emulations (not wildcards)."""
+    if "data" not in model_info:
+        return []
+    return [m for m in model_info["data"] if not is_wildcard_model(m.get("model_name", ""))]
 
 def save_accounts(accounts):
     """Save accounts to JSON file."""
@@ -136,7 +146,8 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
             provider_online = "error" not in health
 
             model_info = litellm_request("/model/info")
-            emulator_active = provider_online and "data" in model_info and len(model_info["data"]) > 0
+            active_emulations = get_active_emulations(model_info)
+            emulator_active = provider_online and len(active_emulations) > 0
 
             self.send_json({
                 "accounts": safe_accounts,
@@ -153,15 +164,15 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
             online = "error" not in health
 
             model_info = litellm_request("/model/info")
-            models = model_info.get("data", [])
+            active_emulations = get_active_emulations(model_info)
 
             self.send_json({
-                "emulatorRunning": online and len(models) > 0,
+                "emulatorRunning": online and len(active_emulations) > 0,
                 "providerOnline": online,
                 "currentConfig": {
-                    "emulatedModelName": models[0]["model_name"] if models else "",
+                    "emulatedModelName": active_emulations[0]["model_name"] if active_emulations else "",
                     "providerName": ""
-                } if models else None
+                } if active_emulations else None
             })
 
         elif path == "/health":
@@ -170,18 +181,18 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
             self.send_json({"online": online, "message": "LiteLLM is running" if online else "LiteLLM offline"})
 
         elif path == "/emulator/active":
-            # Return currently active/emulated models from LiteLLM
+            # Return currently active/emulated models from LiteLLM (excluding wildcards)
             model_info = litellm_request("/model/info")
+            active_emulations = get_active_emulations(model_info)
             active_models = []
-            if "data" in model_info:
-                for m in model_info["data"]:
-                    model_name = m.get("model_name", "")
-                    litellm_model = m.get("litellm_params", {}).get("model", "")
-                    active_models.append({
-                        "emulatedName": model_name,
-                        "actualModel": litellm_model,
-                        "id": m.get("model_info", {}).get("id", model_name)
-                    })
+            for m in active_emulations:
+                model_name = m.get("model_name", "")
+                litellm_model = m.get("litellm_params", {}).get("model", "")
+                active_models.append({
+                    "emulatedName": model_name,
+                    "actualModel": litellm_model,
+                    "id": m.get("model_info", {}).get("id", model_name)
+                })
             self.send_json({"active": active_models, "count": len(active_models)})
 
         elif path == "/models":
@@ -220,6 +231,8 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
                             "providerName": ""
                         })
 
+            # Sort models alphabetically by label
+            models.sort(key=lambda m: m.get("label", "").lower())
             self.send_json({"models": models})
 
         elif path == "/" or path == "":
@@ -320,15 +333,17 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
                 self.send_json({"success": True})
 
         elif path == "/emulator/stop":
-            # Get current models and delete them
+            # Get active emulations and delete them (not wildcards)
             model_info = litellm_request("/model/info")
-            if "data" in model_info:
-                for m in model_info["data"]:
-                    # Use model_info.id for deletion, fallback to model_name
-                    model_id = m.get("model_info", {}).get("id") or m.get("model_name")
-                    if model_id:
-                        litellm_request("/model/delete", "POST", {"id": model_id})
-            self.send_json({"success": True})
+            active_emulations = get_active_emulations(model_info)
+            deleted_count = 0
+            for m in active_emulations:
+                # Use model_info.id for deletion, fallback to model_name
+                model_id = m.get("model_info", {}).get("id") or m.get("model_name")
+                if model_id:
+                    litellm_request("/model/delete", "POST", {"id": model_id})
+                    deleted_count += 1
+            self.send_json({"success": True, "deleted": deleted_count})
 
         elif path == "/config/save":
             # Just acknowledge - config is applied on start
