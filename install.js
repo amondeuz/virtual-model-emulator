@@ -12,132 +12,149 @@ module.exports = {
         ]
       }
     },
-    // Step 2: CRITICAL - Modify Prisma schema IN-PLACE and generate client
+    // Step 2: Write and run a script to modify the Prisma schema IN-PLACE
     {
-      method: "shell.run",
+      method: "fs.write",
       params: {
-        venv: "env",
-        message: `python -c "
-import sys, os, re, subprocess, pathlib, json
+        path: "step2_fix_schema.py",
+        text: `import sys, os, re, subprocess, site
 
-# Find the actual installed litellm_proxy_extras package
+print("[1/3] Locating the litellm_proxy_extras package...")
 package_path = None
+# Search sys.path first
 for p in sys.path:
     if 'site-packages' in p and os.path.exists(p):
-        test_dir = os.path.join(p, 'litellm_proxy_extras')
-        if os.path.exists(test_dir):
-            package_path = test_dir
+        test_path = os.path.join(p, 'litellm_proxy_extras', 'schema.prisma')
+        if os.path.exists(test_path):
+            package_path = os.path.dirname(test_path)
             break
 
+# Fallback to site.getsitepackages()
 if not package_path:
-    import site
     for sitedir in site.getsitepackages():
-        test_dir = os.path.join(sitedir, 'litellm_proxy_extras')
-        if os.path.exists(test_dir):
-            package_path = test_dir
+        test_path = os.path.join(sitedir, 'litellm_proxy_extras', 'schema.prisma')
+        if os.path.exists(test_path):
+            package_path = os.path.dirname(test_path)
             break
 
 if not package_path:
-    raise FileNotFoundError('Could not find litellm_proxy_extras package.')
+    raise FileNotFoundError("Could not find the litellm_proxy_extras package.")
 
-schema_file = os.path.join(package_path, 'schema.prisma')
-print(f'[INFO] Modifying schema at: {schema_file}')
+schema_path = os.path.join(package_path, 'schema.prisma')
+print(f"[2/3] Modifying schema at: {schema_path}")
 
-# Read, modify, and write back to package location
-with open(schema_file, 'r') as f:
+# Read the schema
+with open(schema_path, 'r') as f:
     content = f.read()
 
-# Replace PostgreSQL with SQLite configuration
+# Replace PostgreSQL with SQLite
 sqlite_config = '''datasource db {
-  provider = \"sqlite\"
-  url      = \"file:./litellm.db\"
+  provider = "sqlite"
+  url      = "file:./litellm.db"
 }'''
-
-# Replace the datasource block
 new_content = re.sub(r'datasource\\s+db\\s*{[^}]+}', sqlite_config, content, flags=re.DOTALL)
+new_content = new_content.replace('env("DATABASE_URL")', '"file:./litellm.db"')
 
-# Also replace any env(\"DATABASE_URL\") references
-new_content = new_content.replace('env(\"DATABASE_URL\")', '\"file:./litellm.db\"')
-
-# Write back to the original package file
-with open(schema_file, 'w') as f:
+# Write it back
+with open(schema_path, 'w') as f:
     f.write(new_content)
-print('[SUCCESS] Package schema updated for SQLite.')
 
-# Generate Prisma client from the modified schema
-print('[INFO] Generating Prisma client...')
+# Generate the Prisma client
 os.chdir(package_path)
 result = subprocess.run(['prisma', 'generate'], capture_output=True, text=True)
 if result.returncode == 0:
-    print('[SUCCESS] Prisma client generated.')
+    print("[3/3] Success: Prisma client generated from modified schema.")
 else:
-    print(f'[WARNING] Prisma generation had issues: {result.stderr[:200]}')
-"`
+    print(f"[WARNING] Prisma generation output: {result.stderr[:300]}")
+`
       }
     },
-    // Step 3: Generate config.yaml
     {
       method: "shell.run",
       params: {
         venv: "env",
-        message: `python -c "
-import secrets, pathlib
-master_key = 'sk-' + secrets.token_hex(16)
-config = f'''model_list:
-  - model_name: \"cerebras/*\"
+        message: "python step2_fix_schema.py"
+      }
+    },
+    // Step 3: Write and run a script to generate config.yaml
+    {
+      method: "fs.write",
+      params: {
+        path: "step3_make_config.py",
+        text: `import secrets, pathlib, os
+
+print("[INFO] Generating config.yaml...")
+
+# Only generate if it doesn't exist, or you want to force a new key
+# To force a new key, remove this check.
+if os.path.exists('config.yaml'):
+    print("[INFO] config.yaml already exists. Skipping generation.")
+else:
+    master_key = 'sk-' + secrets.token_hex(16)
+    config_content = f'''model_list:
+  - model_name: "cerebras/*"
     litellm_params:
-      model: \"cerebras/*\"
-      api_key: \"os.environ/CEREBRAS_API_KEY\"
-  - model_name: \"groq/*\"
+      model: "cerebras/*"
+      api_key: "os.environ/CEREBRAS_API_KEY"
+  - model_name: "groq/*"
     litellm_params:
-      model: \"groq/*\"
-      api_key: \"os.environ/GROQ_API_KEY\"
-  - model_name: \"bytez/*\"
+      model: "groq/*"
+      api_key: "os.environ/GROQ_API_KEY"
+  - model_name: "bytez/*"
     litellm_params:
-      model: \"bytez/*\"
-      api_key: \"os.environ/BYTEZ_API_KEY\"
-  - model_name: \"deepseek/*\"
+      model: "bytez/*"
+      api_key: "os.environ/BYTEZ_API_KEY"
+  - model_name: "deepseek/*"
     litellm_params:
-      model: \"deepseek/*\"
-      api_key: \"os.environ/DEEPSEEK_API_KEY\"
-  - model_name: \"gemini/*\"
+      model: "deepseek/*"
+      api_key: "os.environ/DEEPSEEK_API_KEY"
+  - model_name: "gemini/*"
     litellm_params:
-      model: \"gemini/*\"
-      api_key: \"os.environ/GEMINI_API_KEY\"
-  - model_name: \"huggingface/*\"
+      model: "gemini/*"
+      api_key: "os.environ/GEMINI_API_KEY"
+  - model_name: "huggingface/*"
     litellm_params:
-      model: \"huggingface/*\"
-      api_key: \"os.environ/HF_TOKEN\"
-  - model_name: \"openrouter/*\"
+      model: "huggingface/*"
+      api_key: "os.environ/HF_TOKEN"
+  - model_name: "openrouter/*"
     litellm_params:
-      model: \"openrouter/*\"
-      api_key: \"os.environ/OPENROUTER_API_KEY\"
-  - model_name: \"aiml/*\"
+      model: "openrouter/*"
+      api_key: "os.environ/OPENROUTER_API_KEY"
+  - model_name: "aiml/*"
     litellm_params:
-      model: \"aiml/*\"
-      api_key: \"os.environ/AIML_API_KEY\"
-  - model_name: \"cloudflare/*\"
+      model: "aiml/*"
+      api_key: "os.environ/AIML_API_KEY"
+  - model_name: "cloudflare/*"
     litellm_params:
-      model: \"cloudflare/*\"
-      api_key: \"os.environ/CLOUDFLARE_API_KEY\"
+      model: "cloudflare/*"
+      api_key: "os.environ/CLOUDFLARE_API_KEY"
+
 general_settings:
   master_key: {master_key}
-  database_url: \"sqlite:///./litellm.db\"
+  database_url: "sqlite:///./litellm.db"
+
 litellm_settings:
   drop_params: true
   check_provider_endpoint: true
 '''
-pathlib.Path('config.yaml').write_text(config)
-print('[SUCCESS] config.yaml generated.')
-"`
+    pathlib.Path('config.yaml').write_text(config_content)
+    print(f"[SUCCESS] config.yaml generated with new master key.")
+`
       }
     },
-    // Step 4: Create installation marker
+    {
+      method: "shell.run",
+      params: {
+        venv: "env",
+        message: "python step3_make_config.py"
+      }
+    },
+    // Step 4: Create the final installation marker
     {
       method: "fs.write",
       params: {
         path: "env/.installed",
-        text: "Installation completed"
+        text: "Installation completed successfully."
       }
     }
   ]
