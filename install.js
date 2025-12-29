@@ -12,32 +12,48 @@ module.exports = {
         ]
       }
     },
-    // Step 2: Modify Prisma schema for SQLite and generate client
+    // NEW Step 2A: Write a Python script to modify the Prisma schema
+    {
+      method: "fs.write",
+      params: {
+        path: "modify_prisma_schema.py",
+        text: `import subprocess, sys, os, re
+
+# Find the site-packages directory
+site_packages = next(p for p in sys.path if 'site-packages' in p)
+src_schema = os.path.join(site_packages, 'litellm_proxy_extras', 'schema.prisma')
+print(f'[INFO] Copying schema from: {src_schema}')
+
+# Read and modify the schema
+with open(src_schema, 'r') as f:
+    content = f.read()
+
+# Replace PostgreSQL datasource with SQLite
+sqlite_datasource = '''datasource db {
+  provider = "sqlite"
+  url      = "file:./litellm.db"
+}'''
+content = re.sub(r'datasource\\s+db\\s*\\{[^}]+\\}', sqlite_datasource, content, flags=re.DOTALL)
+
+# Write the modified schema locally
+with open('schema.prisma', 'w') as f:
+    f.write(content)
+print('[INFO] Generated SQLite-compatible schema.prisma')
+
+# Generate the Prisma client
+subprocess.run(['prisma', 'generate', '--schema=schema.prisma'], check=True)
+print('[SUCCESS] Prisma client generated.')`
+      }
+    },
+    // NEW Step 2B: Run the Prisma modification script
     {
       method: "shell.run",
       params: {
         venv: "env",
-        message: `python -c "
-import subprocess, sys, os, re
-site_packages = next(p for p in sys.path if 'site-packages' in p)
-src_schema = os.path.join(site_packages, 'litellm_proxy_extras', 'schema.prisma')
-print(f'[INFO] Copying schema from: {src_schema}')
-with open(src_schema, 'r') as f:
-    content = f.read()
-sqlite_datasource = '''datasource db {
-  provider = \"sqlite\"
-  url      = \"file:./litellm.db\"
-}'''
-content = re.sub(r'datasource\\\\s+db\\\\s*\\\\{[^}]+\\\\}', sqlite_datasource, content, flags=re.DOTALL)
-with open('schema.prisma', 'w') as f:
-    f.write(content)
-print('[INFO] Generated SQLite-compatible schema.prisma')
-subprocess.run(['prisma', 'generate', '--schema=schema.prisma'], check=True)
-print('[SUCCESS] Prisma client generated.')
-"`
+        message: "python modify_prisma_schema.py"
       }
     },
-    // NEW Step 3A: Write a simple Python script to generate config.yaml
+    // Step 3A: Write a Python script to generate config.yaml
     {
       method: "fs.write",
       params: {
@@ -98,7 +114,7 @@ pathlib.Path('config.yaml').write_text(config_content)
 print('[SUCCESS] config.yaml generated.')`
       }
     },
-    // NEW Step 3B: Run the Python script we just created
+    // Step 3B: Run the config generation script
     {
       method: "shell.run",
       params: {
@@ -106,7 +122,7 @@ print('[SUCCESS] config.yaml generated.')`
         message: "python generate_config.py"
       }
     },
-    // Step 5: Create installation marker
+    // Step 4: Create installation marker
     {
       method: "fs.write",
       params: {
