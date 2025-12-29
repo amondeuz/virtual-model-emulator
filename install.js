@@ -2,24 +2,24 @@ module.exports = async (kernel, info, onCancel) => {
   let cwd = info.cwd;
 
   // 1. Install core dependencies
-  await kernel.execute({
-    command: 'pip install "litellm[proxy]"',
+  await kernel.run({
+    command: 'pip install litellm[proxy]', // Removed outer quotes
     cwd: cwd,
     env: {},
     onCancel: onCancel
   });
 
-  await kernel.execute({
+  await kernel.run({
     command: 'pip install prisma',
     cwd: cwd,
     env: {},
     onCancel: onCancel
   });
 
-  // 2. Generate Prisma client - FIXED PATH ISSUE
-  await kernel.execute({
+  // 2. Generate Prisma client from the project root
+  await kernel.run({
     command: 'npx prisma generate',
-    cwd: cwd,
+    cwd: cwd, // Assuming schema.prisma is in the project root
     env: {},
     onCancel: onCancel
   });
