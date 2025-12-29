@@ -21,65 +21,13 @@ print('Virtual Model Emulator - Installation')
 print('='*60)
 
 # 1. INSTALL/UPGRADE DEPENDENCIES
-print('\\n[1/4] Installing/Upgrading dependencies...')
+print('\\n[1/3] Installing/Upgrading dependencies...')
 run_command(f'"{sys.executable}" -m pip install --upgrade pip', "Upgrading pip")
 run_command(f'"{sys.executable}" -m pip install --upgrade litellm[proxy]', "Installing litellm[proxy]")
-run_command(f'"{sys.executable}" -m pip install --upgrade prisma', "Installing prisma")
 print('[OK] Dependencies installed.')
 
-# 2. MODIFY PRISMA SCHEMA FOR SQLITE
-print('\\n[2/4] Configuring database for SQLite...')
-schema_path = None
-for p in sys.path:
-    if p and 'site-packages' in p:
-        test_path = os.path.join(p, 'litellm_proxy_extras', 'schema.prisma')
-        if os.path.exists(test_path):
-            schema_path = test_path
-            break
-
-if schema_path:
-    print(f'Found schema at: {schema_path}')
-    try:
-        with open(schema_path, 'r') as f:
-            content = f.read()
-        
-        sqlite_config = '''datasource db {
-  provider = "sqlite"
-  url      = "file:./litellm.db"
-}'''
-        pattern = r'datasource\\s+\\w+\\s*{[^}]+}'
-        new_content = re.sub(pattern, sqlite_config, content, flags=re.DOTALL)
-        new_content = new_content.replace('env("DATABASE_URL")', '"file:./litellm.db"')
-        
-        with open(schema_path, 'w') as f:
-            f.write(new_content)
-        print('[OK] Schema modified for SQLite.')
-        
-        # Delete migration lock file to allow provider switch
-        schema_dir = os.path.dirname(schema_path)
-        migrations_dir = os.path.join(schema_dir, 'prisma', 'migrations')
-        lock_file = os.path.join(migrations_dir, 'migration_lock.toml')
-        if os.path.exists(lock_file):
-            os.remove(lock_file)
-            print('[OK] Removed migration_lock.toml')
-        
-        # Generate client
-        os.chdir(schema_dir)
-        result = run_command('prisma generate', "Generating Prisma client")
-        os.chdir(os.path.dirname(__file__))
-        
-        if result.returncode == 0:
-            print('[OK] Prisma client generated successfully')
-        else:
-            print('[WARNING] Prisma generate had issues - check output above')
-        
-    except Exception as e:
-        print(f'[WARNING] Schema step skipped: {e}')
-else:
-    print('[WARNING] Could not find schema.prisma in expected location.')
-
-# 3. GENERATE CONFIG.YAML (if missing)
-print('\\n[3/4] Checking configuration...')
+# 2. GENERATE CONFIG.YAML (if missing)
+print('\\n[2/3] Checking configuration...')
 config_file = 'config.yaml'
 if os.path.exists(config_file):
     print('[OK] config.yaml already exists.')
@@ -125,7 +73,7 @@ else:
 
 general_settings:
   master_key: {master_key}
-  database_url: "sqlite:///./litellm.db"
+  database_url: null
 
 litellm_settings:
   drop_params: true
@@ -133,10 +81,10 @@ litellm_settings:
 '''
     with open(config_file, 'w') as f:
         f.write(config_content)
-    print(f'[OK] config.yaml generated.')
+    print(f'[OK] config.yaml generated with database disabled.')
 
-# 4. CREATE INSTALLATION MARKER
-print('\\n[4/4] Finalizing installation...')
+# 3. CREATE INSTALLATION MARKER
+print('\\n[3/3] Finalizing installation...')
 os.makedirs('env', exist_ok=True)
 with open('env/.installed', 'w') as f:
     f.write('Installation completed successfully.')
@@ -144,6 +92,7 @@ print('[OK] Installation marker created.')
 
 print('\\n' + '='*60)
 print('INSTALLATION COMPLETE')
+print('Database features disabled - running in basic routing mode')
 print('='*60)
 `
       }
