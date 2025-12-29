@@ -11,6 +11,22 @@ module.exports = {
         ],
       }
     },
+    // Install Prisma for LiteLLM database features
+    {
+      method: "shell.run",
+      params: {
+        venv: "env",
+        message: "pip install prisma",
+      }
+    },
+    // Generate Prisma client for LiteLLM
+    {
+      method: "shell.run",
+      params: {
+        venv: "env",
+        message: "python -c \"import litellm, os, subprocess; schema=os.path.join(os.path.dirname(litellm.__file__), 'proxy', 'prisma', 'schema.prisma'); subprocess.run(['prisma', 'generate', '--schema=' + schema], check=True)\"",
+      }
+    },
     // Generate config.yaml with wildcard models for all 9 providers
     {
       method: "shell.run",
