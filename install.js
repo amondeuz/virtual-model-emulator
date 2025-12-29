@@ -12,15 +12,13 @@ module.exports = {
         ]
       }
     },
-    // Step 2: Write and execute the CRITICAL Prisma schema fix
-    // This modifies the schema file INSIDE the installed package
+    // Step 2: CRITICAL - Modify Prisma schema IN-PLACE and generate client
     {
-      method: "fs.write",
+      method: "shell.run",
       params: {
-        path: "fix_schema.py",
-        text: `import sys, os, re, subprocess, pathlib
-
-print("[INFO] Locating and modifying Prisma schema...")
+        venv: "env",
+        message: `python -c "
+import sys, os, re, subprocess, pathlib, json
 
 # Find the actual installed litellm_proxy_extras package
 package_path = None
@@ -29,122 +27,61 @@ for p in sys.path:
         test_dir = os.path.join(p, 'litellm_proxy_extras')
         if os.path.exists(test_dir):
             package_path = test_dir
-            print(f"[INFO] Found package at: {package_path}")
             break
 
 if not package_path:
-    # Fallback: search more thoroughly
     import site
     for sitedir in site.getsitepackages():
         test_dir = os.path.join(sitedir, 'litellm_proxy_extras')
         if os.path.exists(test_dir):
             package_path = test_dir
-            print(f"[INFO] Found package (fallback) at: {package_path}")
             break
 
 if not package_path:
-    raise FileNotFoundError("Could not find 'litellm_proxy_extras' package.")
+    raise FileNotFoundError('Could not find litellm_proxy_extras package.')
 
 schema_file = os.path.join(package_path, 'schema.prisma')
-print(f"[INFO] Modifying schema file at: {schema_file}")
+print(f'[INFO] Modifying schema at: {schema_file}')
 
-# Read the current schema
+# Read, modify, and write back to package location
 with open(schema_file, 'r') as f:
     content = f.read()
 
-print("[INFO] Original schema content (first 200 chars):", content[:200])
-
-# Replace PostgreSQL configuration with SQLite
-# Target pattern: datasource db { ... }
+# Replace PostgreSQL with SQLite configuration
 sqlite_config = '''datasource db {
-  provider = "sqlite"
-  url      = "file:./litellm.db"
+  provider = \"sqlite\"
+  url      = \"file:./litellm.db\"
 }'''
 
-# Use regex to replace the datasource block
-pattern = r'datasource\\s+db\\s*{[^}]+}'
-new_content, count = re.subn(pattern, sqlite_config, content, flags=re.DOTALL)
+# Replace the datasource block
+new_content = re.sub(r'datasource\\s+db\\s*{[^}]+}', sqlite_config, content, flags=re.DOTALL)
 
-if count == 0:
-    print("[WARNING] Standard datasource pattern not found. Trying alternative match...")
-    # Alternative: look for provider = "postgresql"
-    new_content = content.replace('provider = "postgresql"', 'provider = "sqlite"')
-    new_content = new_content.replace("provider = 'postgresql'", "provider = 'sqlite'")
-    # Also replace the URL
-    new_content = new_content.replace('env("DATABASE_URL")', '"file:./litellm.db"')
-    new_content = new_content.replace("env('DATABASE_URL')", "'file:./litellm.db'")
+# Also replace any env(\"DATABASE_URL\") references
+new_content = new_content.replace('env(\"DATABASE_URL\")', '\"file:./litellm.db\"')
 
-print("[INFO] Modified schema content (first 200 chars):", new_content[:200])
-
-# Write back to the package file
-backup_file = schema_file + '.backup'
-if not os.path.exists(backup_file):
-    os.rename(schema_file, backup_file)
-    print(f"[INFO] Created backup at: {backup_file}")
-
+# Write back to the original package file
 with open(schema_file, 'w') as f:
     f.write(new_content)
-print("[SUCCESS] Package schema updated for SQLite.")
+print('[SUCCESS] Package schema updated for SQLite.')
 
 # Generate Prisma client from the modified schema
-print("[INFO] Generating Prisma client...")
-try:
-    # First, ensure we're in a directory where we can write
-    os.chdir(os.path.dirname(schema_file))
-    
-    result = subprocess.run(
-        ['prisma', 'generate', '--schema', 'schema.prisma'],
-        capture_output=True,
-        text=True,
-        timeout=30
-    )
-    
-    if result.returncode != 0:
-        print(f"[ERROR] Prisma generation failed.")
-        print(f"[ERROR] stderr: {result.stderr[:500]}")
-        print(f"[ERROR] stdout: {result.stdout[:500]}")
-        
-        # Try alternative: generate in project directory
-        print("[INFO] Trying alternative generation in project directory...")
-        project_schema = os.path.join(os.path.dirname(__file__), 'schema.prisma')
-        with open(project_schema, 'w') as f:
-            f.write(new_content)
-        
-        result2 = subprocess.run(
-            ['prisma', 'generate', '--schema', project_schema],
-            capture_output=True,
-            text=True
-        )
-        
-        if result2.returncode != 0:
-            raise RuntimeError(f"Prisma generation failed completely: {result2.stderr}")
-        else:
-            print("[SUCCESS] Prisma client generated in project directory.")
-    else:
-        print("[SUCCESS] Prisma client generated from package schema.")
-        
-except Exception as e:
-    print(f"[ERROR] Unexpected error during Prisma generation: {str(e)}")
-    # Don't crash the installation - continue anyway
-    print("[WARNING] Continuing despite Prisma generation issues...")
-`
+print('[INFO] Generating Prisma client...')
+os.chdir(package_path)
+result = subprocess.run(['prisma', 'generate'], capture_output=True, text=True)
+if result.returncode == 0:
+    print('[SUCCESS] Prisma client generated.')
+else:
+    print(f'[WARNING] Prisma generation had issues: {result.stderr[:200]}')
+"`
       }
     },
-    {
-      method: "shell.run",
-      params: {
-        venv: "env",
-        message: "python fix_schema.py"
-      }
-    },
-    // Step 3: Generate the config.yaml
+    // Step 3: Generate config.yaml
     {
       method: "shell.run",
       params: {
         venv: "env",
         message: `python -c "
 import secrets, pathlib
-print('[INFO] Generating LiteLLM config.yaml...')
 master_key = 'sk-' + secrets.token_hex(16)
 config = f'''model_list:
   - model_name: \"cerebras/*\"
@@ -195,12 +132,12 @@ print('[SUCCESS] config.yaml generated.')
 "`
       }
     },
-    // Step 4: Create the installation marker
+    // Step 4: Create installation marker
     {
       method: "fs.write",
       params: {
         path: "env/.installed",
-        text: "Installation completed: " + new Date().toISOString()
+        text: "Installation completed"
       }
     }
   ]
