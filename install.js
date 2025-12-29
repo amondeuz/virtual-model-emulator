@@ -1,24 +1,24 @@
 module.exports = {
   run: [
-    // Step 1: Install Python and Prisma dependencies
+    // Step 1: Install and upgrade core dependencies
     {
       method: "shell.run",
       params: {
         venv: "env",
         message: [
           "python -m pip install --upgrade pip",
-          "pip install 'litellm[proxy]' prisma"
+          "pip install --upgrade litellm[proxy]", // No quotes for Windows compatibility
+          "pip install --upgrade prisma"
         ]
       }
     },
     // Step 2: CRITICAL - Modify Prisma schema for SQLite and generate client
-    // This step converts the datasource from PostgreSQL to SQLite.
     {
       method: "shell.run",
       params: {
         venv: "env",
         message: `python -c "
-import subprocess, sys, os, shutil, re
+import subprocess, sys, os, re
 # Find the site-packages directory
 site_packages = next(p for p in sys.path if 'site-packages' in p)
 src_schema = os.path.join(site_packages, 'litellm_proxy_extras', 'schema.prisma')
@@ -42,7 +42,7 @@ print('[SUCCESS] Prisma client generated.')
 "`
       }
     },
-    // Step 3: Generate the main LiteLLM config.yaml
+    // Step 3: Generate the main LiteLLM config.yaml with wildcard providers
     {
       method: "shell.run",
       params: {
@@ -51,12 +51,43 @@ print('[SUCCESS] Prisma client generated.')
 import secrets, pathlib
 # Generate a secure master key for LiteLLM
 master_key = 'sk-' + secrets.token_hex(16)
-config_content = '''model_list:
+config_content = f'''model_list:
   - model_name: \"cerebras/*\"
     litellm_params:
       model: \"cerebras/*\"
       api_key: \"os.environ/CEREBRAS_API_KEY\"
-  # ... [Include all other provider blocks from your working file here]
+  - model_name: \"groq/*\"
+    litellm_params:
+      model: \"groq/*\"
+      api_key: \"os.environ/GROQ_API_KEY\"
+  - model_name: \"bytez/*\"
+    litellm_params:
+      model: \"bytez/*\"
+      api_key: \"os.environ/BYTEZ_API_KEY\"
+  - model_name: \"deepseek/*\"
+    litellm_params:
+      model: \"deepseek/*\"
+      api_key: \"os.environ/DEEPSEEK_API_KEY\"
+  - model_name: \"gemini/*\"
+    litellm_params:
+      model: \"gemini/*\"
+      api_key: \"os.environ/GEMINI_API_KEY\"
+  - model_name: \"huggingface/*\"
+    litellm_params:
+      model: \"huggingface/*\"
+      api_key: \"os.environ/HF_TOKEN\"
+  - model_name: \"openrouter/*\"
+    litellm_params:
+      model: \"openrouter/*\"
+      api_key: \"os.environ/OPENROUTER_API_KEY\"
+  - model_name: \"aiml/*\"
+    litellm_params:
+      model: \"aiml/*\"
+      api_key: \"os.environ/AIML_API_KEY\"
+  - model_name: \"cloudflare/*\"
+    litellm_params:
+      model: \"cloudflare/*\"
+      api_key: \"os.environ/CLOUDFLARE_API_KEY\"
 general_settings:
   master_key: {master_key}
   database_url: \"sqlite:///./litellm.db\"
@@ -65,7 +96,7 @@ litellm_settings:
   check_provider_endpoint: true
 '''
 pathlib.Path('config.yaml').write_text(config_content)
-print(f'[SUCCESS] config.yaml generated with master key.')
+print('[SUCCESS] config.yaml generated with master key.')
 "`
       }
     },
