@@ -50,6 +50,13 @@ def get_active_emulations(model_info):
         return []
     return [m for m in model_info["data"] if not is_wildcard_model(m.get("model_name", ""))]
 
+def has_any_api_keys():
+    """Check if ANY provider has an API key configured (accounts or env vars)."""
+    accounts = load_accounts()
+    if len(accounts) > 0:
+        return True
+    return any(os.environ.get(p["envVar"]) for p in PROVIDERS)
+
 def save_accounts(accounts):
     """Save accounts to JSON file."""
     ACCOUNTS_FILE.write_text(json.dumps(accounts, indent=2))
@@ -143,11 +150,14 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
 
             # Check if emulator is running
             health = litellm_request("/health")
-            provider_online = "error" not in health
+            litellm_alive = "error" not in health
 
             model_info = litellm_request("/model/info")
             active_emulations = get_active_emulations(model_info)
-            emulator_active = provider_online and len(active_emulations) > 0
+            emulator_active = len(active_emulations) > 0
+
+            # Provider is only "online" if LiteLLM is running AND we have API keys
+            provider_online = litellm_alive and has_any_api_keys()
 
             self.send_json({
                 "accounts": safe_accounts,
@@ -161,14 +171,17 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
 
         elif path == "/emulator/status":
             health = litellm_request("/health")
-            online = "error" not in health
+            litellm_alive = "error" not in health
 
             model_info = litellm_request("/model/info")
             active_emulations = get_active_emulations(model_info)
 
+            # Provider is only "online" if LiteLLM is running AND we have API keys
+            provider_online = litellm_alive and has_any_api_keys()
+
             self.send_json({
-                "emulatorRunning": online and len(active_emulations) > 0,
-                "providerOnline": online,
+                "emulatorRunning": len(active_emulations) > 0,
+                "providerOnline": provider_online,
                 "currentConfig": {
                     "emulatedModelName": active_emulations[0]["model_name"] if active_emulations else "",
                     "providerName": ""
