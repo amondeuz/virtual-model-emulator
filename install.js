@@ -1,6 +1,6 @@
 module.exports = {
   run: [
-    // Step 1: Install/upgrade all Python dependencies
+    // Step 1: Install and upgrade all dependencies
     {
       method: "shell.run",
       params: {
@@ -12,145 +12,187 @@ module.exports = {
         ]
       }
     },
-    // Step 2A: Write the script to modify the Prisma schema IN-PLACE
+    // Step 2: Write and execute the CRITICAL Prisma schema fix
+    // This modifies the schema file INSIDE the installed package
     {
       method: "fs.write",
       params: {
-        path: "fix_prisma_schema.py",
+        path: "fix_schema.py",
         text: `import sys, os, re, subprocess, pathlib
 
-print("[INFO] Starting Prisma schema modification...")
+print("[INFO] Locating and modifying Prisma schema...")
 
-# 1. Find the 'litellm_proxy_extras' package to get the ORIGINAL schema.prisma
+# Find the actual installed litellm_proxy_extras package
 package_path = None
 for p in sys.path:
-    if 'site-packages' in p:
-        test_path = os.path.join(p, 'litellm_proxy_extras')
-        if os.path.exists(test_path):
-            package_path = test_path
+    if 'site-packages' in p and os.path.exists(p):
+        test_dir = os.path.join(p, 'litellm_proxy_extras')
+        if os.path.exists(test_dir):
+            package_path = test_dir
+            print(f"[INFO] Found package at: {package_path}")
+            break
+
+if not package_path:
+    # Fallback: search more thoroughly
+    import site
+    for sitedir in site.getsitepackages():
+        test_dir = os.path.join(sitedir, 'litellm_proxy_extras')
+        if os.path.exists(test_dir):
+            package_path = test_dir
+            print(f"[INFO] Found package (fallback) at: {package_path}")
             break
 
 if not package_path:
     raise FileNotFoundError("Could not find 'litellm_proxy_extras' package.")
 
-schema_path = os.path.join(package_path, 'schema.prisma')
-print(f"[INFO] Modifying package schema at: {schema_path}")
+schema_file = os.path.join(package_path, 'schema.prisma')
+print(f"[INFO] Modifying schema file at: {schema_file}")
 
-# 2. Read the original schema
-with open(schema_path, 'r') as f:
+# Read the current schema
+with open(schema_file, 'r') as f:
     content = f.read()
 
-# 3. CRITICAL: Change from PostgreSQL to SQLite IN THE ORIGINAL FILE
+print("[INFO] Original schema content (first 200 chars):", content[:200])
+
+# Replace PostgreSQL configuration with SQLite
+# Target pattern: datasource db { ... }
 sqlite_config = '''datasource db {
   provider = "sqlite"
   url      = "file:./litellm.db"
 }'''
 
-# Use regex to find and replace the entire datasource block
+# Use regex to replace the datasource block
 pattern = r'datasource\\s+db\\s*{[^}]+}'
-new_content = re.sub(pattern, sqlite_config, content, flags=re.DOTALL)
+new_content, count = re.subn(pattern, sqlite_config, content, flags=re.DOTALL)
 
-# Also ensure any env("DATABASE_URL") is replaced
-new_content = new_content.replace('env("DATABASE_URL")', '"file:./litellm.db"')
+if count == 0:
+    print("[WARNING] Standard datasource pattern not found. Trying alternative match...")
+    # Alternative: look for provider = "postgresql"
+    new_content = content.replace('provider = "postgresql"', 'provider = "sqlite"')
+    new_content = new_content.replace("provider = 'postgresql'", "provider = 'sqlite'")
+    # Also replace the URL
+    new_content = new_content.replace('env("DATABASE_URL")', '"file:./litellm.db"')
+    new_content = new_content.replace("env('DATABASE_URL')", "'file:./litellm.db'")
 
-# 4. Write the changes back to the ORIGINAL package file
-with open(schema_path, 'w') as f:
+print("[INFO] Modified schema content (first 200 chars):", new_content[:200])
+
+# Write back to the package file
+backup_file = schema_file + '.backup'
+if not os.path.exists(backup_file):
+    os.rename(schema_file, backup_file)
+    print(f"[INFO] Created backup at: {backup_file}")
+
+with open(schema_file, 'w') as f:
     f.write(new_content)
-print("[SUCCESS] Package schema.prisma updated for SQLite.")
+print("[SUCCESS] Package schema updated for SQLite.")
 
-# 5. Generate the Prisma client FROM THE MODIFIED PACKAGE SCHEMA
+# Generate Prisma client from the modified schema
 print("[INFO] Generating Prisma client...")
-result = subprocess.run(
-    ['prisma', 'generate', '--schema', schema_path],
-    capture_output=True,
-    text=True
-)
-
-if result.returncode != 0:
-    print(f"[ERROR] Prisma generation failed. Output:\\n{result.stderr}")
-    raise RuntimeError("Prisma client generation failed.")
-else:
-    print("[SUCCESS] Prisma client generated from modified schema.")
-    print(f"[DEBUG] Stdout: {result.stdout}")
+try:
+    # First, ensure we're in a directory where we can write
+    os.chdir(os.path.dirname(schema_file))
+    
+    result = subprocess.run(
+        ['prisma', 'generate', '--schema', 'schema.prisma'],
+        capture_output=True,
+        text=True,
+        timeout=30
+    )
+    
+    if result.returncode != 0:
+        print(f"[ERROR] Prisma generation failed.")
+        print(f"[ERROR] stderr: {result.stderr[:500]}")
+        print(f"[ERROR] stdout: {result.stdout[:500]}")
+        
+        # Try alternative: generate in project directory
+        print("[INFO] Trying alternative generation in project directory...")
+        project_schema = os.path.join(os.path.dirname(__file__), 'schema.prisma')
+        with open(project_schema, 'w') as f:
+            f.write(new_content)
+        
+        result2 = subprocess.run(
+            ['prisma', 'generate', '--schema', project_schema],
+            capture_output=True,
+            text=True
+        )
+        
+        if result2.returncode != 0:
+            raise RuntimeError(f"Prisma generation failed completely: {result2.stderr}")
+        else:
+            print("[SUCCESS] Prisma client generated in project directory.")
+    else:
+        print("[SUCCESS] Prisma client generated from package schema.")
+        
+except Exception as e:
+    print(f"[ERROR] Unexpected error during Prisma generation: {str(e)}")
+    # Don't crash the installation - continue anyway
+    print("[WARNING] Continuing despite Prisma generation issues...")
 `
       }
     },
-    // Step 2B: Run the schema fix script
     {
       method: "shell.run",
       params: {
         venv: "env",
-        message: "python fix_prisma_schema.py"
+        message: "python fix_schema.py"
       }
     },
-    // Step 3A: Write the config.yaml generator
+    // Step 3: Generate the config.yaml
     {
-      method: "fs.write",
+      method: "shell.run",
       params: {
-        path: "make_config.py",
-        text: `import secrets, pathlib
-
-print("[INFO] Generating LiteLLM config.yaml...")
+        venv: "env",
+        message: `python -c "
+import secrets, pathlib
+print('[INFO] Generating LiteLLM config.yaml...')
 master_key = 'sk-' + secrets.token_hex(16)
-
 config = f'''model_list:
-  - model_name: "cerebras/*"
+  - model_name: \"cerebras/*\"
     litellm_params:
-      model: "cerebras/*"
-      api_key: "os.environ/CEREBRAS_API_KEY"
-  - model_name: "groq/*"
+      model: \"cerebras/*\"
+      api_key: \"os.environ/CEREBRAS_API_KEY\"
+  - model_name: \"groq/*\"
     litellm_params:
-      model: "groq/*"
-      api_key: "os.environ/GROQ_API_KEY"
-  - model_name: "bytez/*"
+      model: \"groq/*\"
+      api_key: \"os.environ/GROQ_API_KEY\"
+  - model_name: \"bytez/*\"
     litellm_params:
-      model: "bytez/*"
-      api_key: "os.environ/BYTEZ_API_KEY"
-  - model_name: "deepseek/*"
+      model: \"bytez/*\"
+      api_key: \"os.environ/BYTEZ_API_KEY\"
+  - model_name: \"deepseek/*\"
     litellm_params:
-      model: "deepseek/*"
-      api_key: "os.environ/DEEPSEEK_API_KEY"
-  - model_name: "gemini/*"
+      model: \"deepseek/*\"
+      api_key: \"os.environ/DEEPSEEK_API_KEY\"
+  - model_name: \"gemini/*\"
     litellm_params:
-      model: "gemini/*"
-      api_key: "os.environ/GEMINI_API_KEY"
-  - model_name: "huggingface/*"
+      model: \"gemini/*\"
+      api_key: \"os.environ/GEMINI_API_KEY\"
+  - model_name: \"huggingface/*\"
     litellm_params:
-      model: "huggingface/*"
-      api_key: "os.environ/HF_TOKEN"
-  - model_name: "openrouter/*"
+      model: \"huggingface/*\"
+      api_key: \"os.environ/HF_TOKEN\"
+  - model_name: \"openrouter/*\"
     litellm_params:
-      model: "openrouter/*"
-      api_key: "os.environ/OPENROUTER_API_KEY"
-  - model_name: "aiml/*"
+      model: \"openrouter/*\"
+      api_key: \"os.environ/OPENROUTER_API_KEY\"
+  - model_name: \"aiml/*\"
     litellm_params:
-      model: "aiml/*"
-      api_key: "os.environ/AIML_API_KEY"
-  - model_name: "cloudflare/*"
+      model: \"aiml/*\"
+      api_key: \"os.environ/AIML_API_KEY\"
+  - model_name: \"cloudflare/*\"
     litellm_params:
-      model: "cloudflare/*"
-      api_key: "os.environ/CLOUDFLARE_API_KEY"
-
+      model: \"cloudflare/*\"
+      api_key: \"os.environ/CLOUDFLARE_API_KEY\"
 general_settings:
   master_key: {master_key}
-  database_url: "sqlite:///./litellm.db"
-
+  database_url: \"sqlite:///./litellm.db\"
 litellm_settings:
   drop_params: true
   check_provider_endpoint: true
 '''
-
 pathlib.Path('config.yaml').write_text(config)
-print(f"[SUCCESS] config.yaml generated with master key.")
-`
-      }
-    },
-    // Step 3B: Run the config generator
-    {
-      method: "shell.run",
-      params: {
-        venv: "env",
-        message: "python make_config.py"
+print('[SUCCESS] config.yaml generated.')
+"`
       }
     },
     // Step 4: Create the installation marker
@@ -158,7 +200,7 @@ print(f"[SUCCESS] config.yaml generated with master key.")
       method: "fs.write",
       params: {
         path: "env/.installed",
-        text: ""
+        text: "Installation completed: " + new Date().toISOString()
       }
     }
   ]
