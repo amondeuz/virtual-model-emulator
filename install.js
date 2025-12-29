@@ -19,12 +19,12 @@ module.exports = {
         message: "pip install prisma",
       }
     },
-    // Generate Prisma client for LiteLLM
+    // Generate Prisma client for LiteLLM (cross-platform path detection)
     {
       method: "shell.run",
       params: {
         venv: "env",
-        message: "python -c \"import litellm, os, subprocess; schema=os.path.join(os.path.dirname(litellm.__file__), 'proxy', 'prisma', 'schema.prisma'); subprocess.run(['prisma', 'generate', '--schema=' + schema], check=True)\"",
+        message: "python -c \"import subprocess, sys, os; site_packages = next(p for p in sys.path if 'site-packages' in p); schema = os.path.join(site_packages, 'litellm_proxy_extras', 'schema.prisma'); print(f'Using schema: {schema}'); subprocess.run(['prisma', 'generate', '--schema=' + schema], check=True)\"",
       }
     },
     // Generate config.yaml with wildcard models for all 9 providers
