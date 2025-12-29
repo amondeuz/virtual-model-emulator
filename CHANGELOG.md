@@ -1,5 +1,30 @@
 # Changelog
 
+## [2.0.0-beta.8] - 2025-12-29
+
+### Fixed
+- **Critical**: Added SQLite database configuration for LiteLLM dynamic model management
+  - Without `database_url`, `/model/new` and `/model/delete` API calls fail with 500 errors
+  - Added `database_url: "sqlite:///./litellm.db"` to generated config.yaml
+- **Status logic**: Emulator no longer shows "Running" on startup before any configuration
+  - Now correctly distinguishes between wildcard passthrough models (e.g., `groq/*`) and explicit emulations
+  - Status only shows "Running" when user has started an explicit model mapping
+- **Accounts refresh button**: Now actually reloads and repopulates accounts from server
+  - Previously called API but didn't update the UI with new accounts
+- **Stop button validation**: Removed incorrect "Select a model first" error when stopping
+  - Validation now only applies when starting, not stopping
+- **Model deletion**: Now uses correct `model_info.id` instead of `model_name` for `/model/delete` API
+- **Emulator stop**: Now only deletes explicitly configured emulations, preserving wildcard models
+
+### Changed
+- Models in dropdown now sorted alphabetically
+- Emulated model names dropdown now sorted alphabetically
+- `/emulator/stop` only removes user-configured models, not wildcard passthroughs
+
+### Added
+- `is_wildcard_model()` helper to identify passthrough models
+- `get_active_emulations()` helper to filter out wildcards from model list
+
 ## [2.0.0-beta.7] - 2025-12-28
 
 ### Changed
