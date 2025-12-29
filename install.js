@@ -1,6 +1,6 @@
 module.exports = {
   run: [
-    // Step 1: Install and upgrade core dependencies
+    // Step 1: Install/upgrade all Python dependencies
     {
       method: "shell.run",
       params: {
@@ -12,88 +12,88 @@ module.exports = {
         ]
       }
     },
-    // NEW DEBUG STEP: Check if LiteLLM extras are installed
-    {
-      method: "shell.run",
-      params: {
-        venv: "env",
-        message: "python -c \"import pkgutil; print('LiteLLM extras found:', pkgutil.find_loader('litellm_proxy_extras') is not None)\"",
-        onError: "continue" // Don't stop if this fails
-      }
-    },
-    // Step 2A: Write the Prisma modification script
+    // Step 2A: Write the script to modify the Prisma schema IN-PLACE
     {
       method: "fs.write",
       params: {
-        path: "modify_prisma_schema.py",
-        text: `import subprocess, sys, os, re
+        path: "fix_prisma_schema.py",
+        text: `import sys, os, re, subprocess, pathlib
 
-# Find the site-packages directory
-site_packages = next(p for p in sys.path if 'site-packages' in p)
-print(f'[DEBUG] Site-packages path: {site_packages}')
-src_schema = os.path.join(site_packages, 'litellm_proxy_extras', 'schema.prisma')
-print(f'[INFO] Copying schema from: {src_schema}')
+print("[INFO] Starting Prisma schema modification...")
 
-# Check if source file exists
-if not os.path.exists(src_schema):
-    print(f'[ERROR] Schema file not found at: {src_schema}')
-    print('[INFO] Checking common locations...')
-    # Try a common alternative path pattern
-    import site
-    for sitedir in site.getsitepackages():
-        check_path = os.path.join(sitedir, 'litellm_proxy_extras', 'schema.prisma')
-        print(f'  Checking: {check_path}')
-        if os.path.exists(check_path):
-            src_schema = check_path
-            print(f'[INFO] Found schema at: {src_schema}')
+# 1. Find the 'litellm_proxy_extras' package to get the ORIGINAL schema.prisma
+package_path = None
+for p in sys.path:
+    if 'site-packages' in p:
+        test_path = os.path.join(p, 'litellm_proxy_extras')
+        if os.path.exists(test_path):
+            package_path = test_path
             break
-    else:
-        raise FileNotFoundError(f'Could not find schema.prisma in any known location')
 
-# Read and modify the schema
-with open(src_schema, 'r') as f:
+if not package_path:
+    raise FileNotFoundError("Could not find 'litellm_proxy_extras' package.")
+
+schema_path = os.path.join(package_path, 'schema.prisma')
+print(f"[INFO] Modifying package schema at: {schema_path}")
+
+# 2. Read the original schema
+with open(schema_path, 'r') as f:
     content = f.read()
 
-# Replace PostgreSQL datasource with SQLite
-sqlite_datasource = '''datasource db {
+# 3. CRITICAL: Change from PostgreSQL to SQLite IN THE ORIGINAL FILE
+sqlite_config = '''datasource db {
   provider = "sqlite"
   url      = "file:./litellm.db"
 }'''
-content = re.sub(r'datasource\\s+db\\s*\\{[^}]+\\}', sqlite_datasource, content, flags=re.DOTALL)
 
-# Write the modified schema locally
-with open('schema.prisma', 'w') as f:
-    f.write(content)
-print('[INFO] Generated SQLite-compatible schema.prisma')
+# Use regex to find and replace the entire datasource block
+pattern = r'datasource\\s+db\\s*{[^}]+}'
+new_content = re.sub(pattern, sqlite_config, content, flags=re.DOTALL)
 
-# Generate the Prisma client
-print('[INFO] Generating Prisma client...')
-result = subprocess.run(['prisma', 'generate', '--schema=schema.prisma'], capture_output=True, text=True)
+# Also ensure any env("DATABASE_URL") is replaced
+new_content = new_content.replace('env("DATABASE_URL")', '"file:./litellm.db"')
+
+# 4. Write the changes back to the ORIGINAL package file
+with open(schema_path, 'w') as f:
+    f.write(new_content)
+print("[SUCCESS] Package schema.prisma updated for SQLite.")
+
+# 5. Generate the Prisma client FROM THE MODIFIED PACKAGE SCHEMA
+print("[INFO] Generating Prisma client...")
+result = subprocess.run(
+    ['prisma', 'generate', '--schema', schema_path],
+    capture_output=True,
+    text=True
+)
+
 if result.returncode != 0:
-    print(f'[ERROR] Prisma generation failed: {result.stderr}')
-    raise RuntimeError('Prisma client generation failed')
-print('[SUCCESS] Prisma client generated.')`
+    print(f"[ERROR] Prisma generation failed. Output:\\n{result.stderr}")
+    raise RuntimeError("Prisma client generation failed.")
+else:
+    print("[SUCCESS] Prisma client generated from modified schema.")
+    print(f"[DEBUG] Stdout: {result.stdout}")
+`
       }
     },
-    // Step 2B: Run the Prisma modification script
+    // Step 2B: Run the schema fix script
     {
       method: "shell.run",
       params: {
         venv: "env",
-        message: "python modify_prisma_schema.py"
+        message: "python fix_prisma_schema.py"
       }
     },
-    // Step 3A: Write the config generation script
+    // Step 3A: Write the config.yaml generator
     {
       method: "fs.write",
       params: {
-        path: "generate_config.py",
+        path: "make_config.py",
         text: `import secrets, pathlib
 
-# Generate a secure master key for LiteLLM
+print("[INFO] Generating LiteLLM config.yaml...")
 master_key = 'sk-' + secrets.token_hex(16)
 
-config_content = f'''model_list:
+config = f'''model_list:
   - model_name: "cerebras/*"
     litellm_params:
       model: "cerebras/*"
@@ -140,32 +140,25 @@ litellm_settings:
   check_provider_endpoint: true
 '''
 
-pathlib.Path('config.yaml').write_text(config_content)
-print('[SUCCESS] config.yaml generated.')`
+pathlib.Path('config.yaml').write_text(config)
+print(f"[SUCCESS] config.yaml generated with master key.")
+`
       }
     },
-    // Step 3B: Run the config generation script
+    // Step 3B: Run the config generator
     {
       method: "shell.run",
       params: {
         venv: "env",
-        message: "python generate_config.py"
+        message: "python make_config.py"
       }
     },
-    // Step 4: Create installation marker
+    // Step 4: Create the installation marker
     {
       method: "fs.write",
       params: {
         path: "env/.installed",
-        text: "Installation completed successfully"
-      }
-    },
-    // NEW FINAL STEP: Verify installation
-    {
-      method: "shell.run",
-      params: {
-        venv: "env",
-        message: "python -c \"import os; print(f'Installation marker exists: {os.path.exists(\\\"env/.installed\\\")}')\""
+        text: ""
       }
     }
   ]
