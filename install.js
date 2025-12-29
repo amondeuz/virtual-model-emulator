@@ -47,7 +47,7 @@ if schema_path:
   provider = "sqlite"
   url      = "file:./litellm.db"
 }'''
-        pattern = r'datasource\\s+db\\s*{[^}]+}'
+        pattern = r'datasource\\s+\\w+\\s*{[^}]+}'
         new_content = re.sub(pattern, sqlite_config, content, flags=re.DOTALL)
         new_content = new_content.replace('env("DATABASE_URL")', '"file:./litellm.db"')
         
