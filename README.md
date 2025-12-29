@@ -1,4 +1,4 @@
-# Virtual Model Emulator v2.0.0-beta.7
+# Virtual Model Emulator v2.0.0-beta.8
 
 A Pinokio app that provides a local OpenAI-compatible HTTP endpoint with **model name emulation** powered by LiteLLM proxy server. Route any model name to any provider - make Pinokio apps think they're talking to one model while actually using another.
 
