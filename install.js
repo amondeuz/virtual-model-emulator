@@ -12,7 +12,16 @@ module.exports = {
         ]
       }
     },
-    // NEW Step 2A: Write a Python script to modify the Prisma schema
+    // NEW DEBUG STEP: Check if LiteLLM extras are installed
+    {
+      method: "shell.run",
+      params: {
+        venv: "env",
+        message: "python -c \"import pkgutil; print('LiteLLM extras found:', pkgutil.find_loader('litellm_proxy_extras') is not None)\"",
+        onError: "continue" // Don't stop if this fails
+      }
+    },
+    // Step 2A: Write the Prisma modification script
     {
       method: "fs.write",
       params: {
@@ -21,8 +30,25 @@ module.exports = {
 
 # Find the site-packages directory
 site_packages = next(p for p in sys.path if 'site-packages' in p)
+print(f'[DEBUG] Site-packages path: {site_packages}')
 src_schema = os.path.join(site_packages, 'litellm_proxy_extras', 'schema.prisma')
 print(f'[INFO] Copying schema from: {src_schema}')
+
+# Check if source file exists
+if not os.path.exists(src_schema):
+    print(f'[ERROR] Schema file not found at: {src_schema}')
+    print('[INFO] Checking common locations...')
+    # Try a common alternative path pattern
+    import site
+    for sitedir in site.getsitepackages():
+        check_path = os.path.join(sitedir, 'litellm_proxy_extras', 'schema.prisma')
+        print(f'  Checking: {check_path}')
+        if os.path.exists(check_path):
+            src_schema = check_path
+            print(f'[INFO] Found schema at: {src_schema}')
+            break
+    else:
+        raise FileNotFoundError(f'Could not find schema.prisma in any known location')
 
 # Read and modify the schema
 with open(src_schema, 'r') as f:
@@ -41,11 +67,15 @@ with open('schema.prisma', 'w') as f:
 print('[INFO] Generated SQLite-compatible schema.prisma')
 
 # Generate the Prisma client
-subprocess.run(['prisma', 'generate', '--schema=schema.prisma'], check=True)
+print('[INFO] Generating Prisma client...')
+result = subprocess.run(['prisma', 'generate', '--schema=schema.prisma'], capture_output=True, text=True)
+if result.returncode != 0:
+    print(f'[ERROR] Prisma generation failed: {result.stderr}')
+    raise RuntimeError('Prisma client generation failed')
 print('[SUCCESS] Prisma client generated.')`
       }
     },
-    // NEW Step 2B: Run the Prisma modification script
+    // Step 2B: Run the Prisma modification script
     {
       method: "shell.run",
       params: {
@@ -53,7 +83,7 @@ print('[SUCCESS] Prisma client generated.')`
         message: "python modify_prisma_schema.py"
       }
     },
-    // Step 3A: Write a Python script to generate config.yaml
+    // Step 3A: Write the config generation script
     {
       method: "fs.write",
       params: {
@@ -127,7 +157,15 @@ print('[SUCCESS] config.yaml generated.')`
       method: "fs.write",
       params: {
         path: "env/.installed",
-        text: ""
+        text: "Installation completed successfully"
+      }
+    },
+    // NEW FINAL STEP: Verify installation
+    {
+      method: "shell.run",
+      params: {
+        venv: "env",
+        message: "python -c \"import os; print(f'Installation marker exists: {os.path.exists(\\\"env/.installed\\\")}')\""
       }
     }
   ]
