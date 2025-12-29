@@ -1,27 +1,27 @@
-module.exports = async (kernel, info, onCancel) => {  // CORRECT: onCancel is the third parameter
+module.exports = async (kernel, info, onCancel) => {
   let cwd = info.cwd;
 
   // 1. Install core dependencies
-  await kernel.run({
+  await kernel.execute({
     command: 'pip install "litellm[proxy]"',
     cwd: cwd,
     env: {},
-    onCancel: onCancel  // Pass the parameter directly
+    onCancel: onCancel
   });
 
-  await kernel.run({
+  await kernel.execute({
     command: 'pip install prisma',
     cwd: cwd,
     env: {},
-    onCancel: onCancel  // Pass the parameter directly
+    onCancel: onCancel
   });
 
-  // 2. Generate Prisma client INSIDE the package directory
-  await kernel.run({
-    command: 'cd "env\\Lib\\site-packages\\litellm_proxy_extras" && prisma generate',
+  // 2. Generate Prisma client - FIXED PATH ISSUE
+  await kernel.execute({
+    command: 'npx prisma generate',
     cwd: cwd,
     env: {},
-    onCancel: onCancel  // Pass the parameter directly
+    onCancel: onCancel
   });
 
   // 3. Create installation marker
