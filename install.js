@@ -19,12 +19,23 @@ module.exports = {
         message: "pip install prisma",
       }
     },
-    // Generate Prisma client for LiteLLM (cross-platform path detection)
+    // Copy and modify Prisma schema for SQLite, then generate client
     {
       method: "shell.run",
       params: {
         venv: "env",
-        message: "python -c \"import subprocess, sys, os; site_packages = next(p for p in sys.path if 'site-packages' in p); schema = os.path.join(site_packages, 'litellm_proxy_extras', 'schema.prisma'); print(f'Using schema: {schema}'); subprocess.run(['prisma', 'generate', '--schema=' + schema], check=True)\"",
+        message: "python -c \"" +
+          "import subprocess, sys, os, shutil, re; " +
+          "site_packages = next(p for p in sys.path if 'site-packages' in p); " +
+          "src_schema = os.path.join(site_packages, 'litellm_proxy_extras', 'schema.prisma'); " +
+          "print(f'Copying schema from: {src_schema}'); " +
+          "content = open(src_schema).read(); " +
+          "# Replace PostgreSQL datasource with SQLite; " +
+          "sqlite_datasource = 'datasource db {\\n  provider = \\\"sqlite\\\"\\n  url      = \\\"file:./litellm.db\\\"\\n}'; " +
+          "content = re.sub(r'datasource\\\\s+db\\\\s*\\\\{[^}]+\\\\}', sqlite_datasource, content); " +
+          "open('schema.prisma', 'w').write(content); " +
+          "print('Generated SQLite schema.prisma'); " +
+          "subprocess.run(['prisma', 'generate', '--schema=schema.prisma'], check=True)\"",
       }
     },
     // Generate config.yaml with wildcard models for all 9 providers
