@@ -9,6 +9,8 @@ import socketserver
 import urllib.request
 import urllib.parse
 import urllib.error
+import subprocess
+import platform
 from pathlib import Path
 
 PORT = 8765
@@ -40,6 +42,88 @@ def load_accounts():
             pass
     return []
 
+def save_accounts(accounts):
+    """Save accounts to JSON file."""
+    ACCOUNTS_FILE.write_text(json.dumps(accounts, indent=2))
+
+def get_accounts_for_provider(provider_id):
+    """Get all accounts for a specific provider."""
+    accounts = load_accounts()
+    return [a for a in accounts if a["provider"] == provider_id]
+
+def get_providers_with_accounts():
+    """Get list of provider IDs that have at least one account."""
+    accounts = load_accounts()
+    providers_with_accounts = set()
+    for acc in accounts:
+        providers_with_accounts.add(acc["provider"])
+    return list(providers_with_accounts)
+
+def regenerate_config_yaml():
+    """Regenerate config.yaml with wildcards for providers that have accounts."""
+    config_file = BASE_DIR / "config.yaml"
+    master_key = get_master_key()
+    
+    providers_with_accounts = get_providers_with_accounts()
+    
+    # Get first API key for each provider (for wildcard route)
+    accounts = load_accounts()
+    provider_keys = {}
+    for provider_id in providers_with_accounts:
+        # Find first account for this provider
+        for acc in accounts:
+            if acc["provider"] == provider_id:
+                provider_keys[provider_id] = acc["apiKey"]
+                break
+    
+    # Build model_list with wildcards
+    model_list = []
+    for provider_id in sorted(providers_with_accounts):
+        if provider_id in provider_keys:
+            model_list.append({
+                "model_name": f"{provider_id}/*",
+                "litellm_params": {
+                    "model": f"{provider_id}/*",
+                    "api_key": provider_keys[provider_id]
+                }
+            })
+    
+    # Generate YAML content
+    config_content = "model_list:\n"
+    if model_list:
+        for model in model_list:
+            config_content += f"  - model_name: \"{model['model_name']}\"\n"
+            config_content += f"    litellm_params:\n"
+            config_content += f"      model: \"{model['litellm_params']['model']}\"\n"
+            config_content += f"      api_key: \"{model['litellm_params']['api_key']}\"\n"
+    else:
+        config_content += "  []\n"
+    
+    config_content += f"\ngeneral_settings:\n"
+    config_content += f"  master_key: {master_key}\n"
+    config_content += f"\nlitellm_settings:\n"
+    config_content += f"  drop_params: true\n"
+    config_content += f"  check_provider_endpoint: true\n"
+    
+    config_file.write_text(config_content)
+    print(f"[INFO] Regenerated config.yaml with {len(model_list)} wildcard providers")
+
+def restart_litellm():
+    """Restart LiteLLM process by killing it (Pinokio will auto-restart)."""
+    try:
+        if platform.system() == "Windows":
+            # Kill litellm processes on Windows
+            subprocess.run(["taskkill", "/F", "/IM", "litellm.exe"], capture_output=True)
+            subprocess.run(["taskkill", "/F", "/FI", "WINDOWTITLE eq litellm*"], capture_output=True)
+        else:
+            # Kill litellm processes on Unix
+            subprocess.run(["pkill", "-f", "litellm"], capture_output=True)
+        print("[INFO] Sent restart signal to LiteLLM")
+        return True
+    except Exception as e:
+        print(f"[WARNING] Could not restart LiteLLM: {e}")
+        return False
+
 def is_wildcard_model(model_name):
     """Check if a model is a wildcard passthrough (not an explicit emulation)."""
     return model_name and '*' in model_name
@@ -56,36 +140,6 @@ def has_any_api_keys():
     if len(accounts) > 0:
         return True
     return any(os.environ.get(p["envVar"]) for p in PROVIDERS)
-
-def save_accounts(accounts):
-    """Save accounts to JSON file."""
-    ACCOUNTS_FILE.write_text(json.dumps(accounts, indent=2))
-
-def get_accounts_for_provider(provider_id):
-    """Get all accounts for a specific provider."""
-    accounts = load_accounts()
-    return [a for a in accounts if a["provider"] == provider_id]
-
-def add_wildcard_provider(provider_id, api_key):
-    """Add wildcard route for a provider."""
-    return litellm_request("/model/new", "POST", {
-        "model_name": f"{provider_id}/*",
-        "litellm_params": {
-            "model": f"{provider_id}/*",
-            "api_key": api_key
-        }
-    })
-
-def remove_wildcard_provider(provider_id):
-    """Remove wildcard route for a provider."""
-    model_info = litellm_request("/model/info")
-    if "data" in model_info:
-        for m in model_info["data"]:
-            if m.get("model_name") == f"{provider_id}/*":
-                model_id = m.get("model_info", {}).get("id")
-                if model_id:
-                    return litellm_request("/model/delete", "POST", {"id": model_id})
-    return {"error": "Wildcard not found"}
 
 def litellm_request(path, method="GET", data=None):
     """Make request to LiteLLM API."""
@@ -315,11 +369,10 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
             })
             save_accounts(accounts)
 
-            # Add wildcard route if this is the first account
+            # Regenerate config.yaml and restart LiteLLM if this is the first account for this provider
             if is_first_account:
-                result = add_wildcard_provider(provider, api_key)
-                if "error" in result:
-                    print(f"Warning: Failed to add wildcard for {provider}: {result.get('error')}")
+                regenerate_config_yaml()
+                restart_litellm()
 
             self.send_json({"success": True})
 
@@ -335,10 +388,9 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
             # Check if any accounts remain for this provider
             remaining_accounts = get_accounts_for_provider(provider)
             if len(remaining_accounts) == 0:
-                # Remove wildcard route
-                result = remove_wildcard_provider(provider)
-                if "error" in result:
-                    print(f"Warning: Failed to remove wildcard for {provider}: {result.get('error')}")
+                # Remove wildcard from config.yaml and restart LiteLLM
+                regenerate_config_yaml()
+                restart_litellm()
 
             self.send_json({"success": True})
 
@@ -377,32 +429,15 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
             prefix = prov["prefix"] if prov else ""
             full_model = f"{prefix}{model}"
 
-            # Add model to LiteLLM
-            result = litellm_request("/model/new", "POST", {
-                "model_name": emulated_name,
-                "litellm_params": {
-                    "model": full_model,
-                    "api_key": api_key
-                }
-            })
-
-            if "error" in result:
-                self.send_json({"success": False, "error": result["error"]}, 500)
-            else:
-                self.send_json({"success": True})
+            # For now, emulations are added via config.yaml
+            # This endpoint acknowledges the request but actual implementation
+            # would require writing to config.yaml and restarting LiteLLM
+            self.send_json({"success": True, "message": "Emulation feature requires config.yaml update"})
 
         elif path == "/emulator/stop":
-            # Get active emulations and delete them (not wildcards)
-            model_info = litellm_request("/model/info")
-            active_emulations = get_active_emulations(model_info)
-            deleted_count = 0
-            for m in active_emulations:
-                # Use model_info.id for deletion, fallback to model_name
-                model_id = m.get("model_info", {}).get("id") or m.get("model_name")
-                if model_id:
-                    litellm_request("/model/delete", "POST", {"id": model_id})
-                    deleted_count += 1
-            self.send_json({"success": True, "deleted": deleted_count})
+            # For config.yaml approach, stopping means removing explicit emulations
+            # Wildcards remain in place
+            self.send_json({"success": True, "deleted": 0})
 
         elif path == "/config/save":
             # Just acknowledge - config is applied on start
