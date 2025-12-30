@@ -61,6 +61,32 @@ def save_accounts(accounts):
     """Save accounts to JSON file."""
     ACCOUNTS_FILE.write_text(json.dumps(accounts, indent=2))
 
+def get_accounts_for_provider(provider_id):
+    """Get all accounts for a specific provider."""
+    accounts = load_accounts()
+    return [a for a in accounts if a["provider"] == provider_id]
+
+def add_wildcard_provider(provider_id, api_key):
+    """Add wildcard route for a provider."""
+    return litellm_request("/model/new", "POST", {
+        "model_name": f"{provider_id}/*",
+        "litellm_params": {
+            "model": f"{provider_id}/*",
+            "api_key": api_key
+        }
+    })
+
+def remove_wildcard_provider(provider_id):
+    """Remove wildcard route for a provider."""
+    model_info = litellm_request("/model/info")
+    if "data" in model_info:
+        for m in model_info["data"]:
+            if m.get("model_name") == f"{provider_id}/*":
+                model_id = m.get("model_info", {}).get("id")
+                if model_id:
+                    return litellm_request("/model/delete", "POST", {"id": model_id})
+    return {"error": "Wildcard not found"}
+
 def litellm_request(path, method="GET", data=None):
     """Make request to LiteLLM API."""
     url = f"{LITELLM_URL}{path}"
@@ -278,12 +304,23 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
                     self.send_json({"success": False, "error": "Account already exists"}, 400)
                     return
 
+            # Check if this is the first account for this provider
+            provider_accounts = get_accounts_for_provider(provider)
+            is_first_account = len(provider_accounts) == 0
+
             accounts.append({
                 "provider": provider,
                 "accountName": account_name,
                 "apiKey": api_key
             })
             save_accounts(accounts)
+
+            # Add wildcard route if this is the first account
+            if is_first_account:
+                result = add_wildcard_provider(provider, api_key)
+                if "error" in result:
+                    print(f"Warning: Failed to add wildcard for {provider}: {result.get('error')}")
+
             self.send_json({"success": True})
 
         elif path == "/providers/disconnect":
@@ -294,6 +331,15 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
             accounts = load_accounts()
             accounts = [a for a in accounts if not (a["provider"] == provider and a["accountName"] == account_name)]
             save_accounts(accounts)
+
+            # Check if any accounts remain for this provider
+            remaining_accounts = get_accounts_for_provider(provider)
+            if len(remaining_accounts) == 0:
+                # Remove wildcard route
+                result = remove_wildcard_provider(provider)
+                if "error" in result:
+                    print(f"Warning: Failed to remove wildcard for {provider}: {result.get('error')}")
+
             self.send_json({"success": True})
 
         elif path == "/emulator/start":
