@@ -1,5 +1,36 @@
 # Changelog
 
+## [2.0.0] - 2025-12-30
+
+### Released - Wildcard Provider Passthrough
+
+This version is a **wildcard provider passthrough system**. The "emulation" features shown in the UI are not yet functional.
+
+**What actually works:**
+- LiteLLM proxy with wildcard routes (groq/*, deepseek/*, etc.)
+- Provider account management with API key storage
+- config.yaml generation with wildcard providers
+- All models from connected providers exposed via OpenAI-compatible endpoint
+
+**Known limitations (non-functional features):**
+- `/emulator/start` endpoint (server.py line ~275) returns success but doesn't create model mappings
+- "Emulated Model Name" UI field does nothing
+- Cannot make apps request "gpt-4" and route to a different model
+- System is passthrough only - requests go directly to whatever model name is specified
+
+**Why emulation doesn't work:**
+- Requires PostgreSQL or SQLite database with Prisma ORM
+- Requires LiteLLM's `/model/new` API with `STORE_MODEL_IN_DB=True`
+- Current architecture uses static config.yaml with wildcards only
+
+**Next version will implement true emulation:**
+- Add database support (PostgreSQL/SQLite + Prisma)
+- Implement dynamic model registration via `/model/new` API
+- Build actual model name translation/interception
+- Complete backend rewrite in server.py
+
+This release provides stable wildcard passthrough for multi-provider access.
+
 ## [2.0.0-beta.8] - 2025-12-29
 
 ### Fixed

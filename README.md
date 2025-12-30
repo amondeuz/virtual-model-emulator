@@ -1,4 +1,4 @@
-# Virtual Model Emulator v2.0.0-beta.8
+# Virtual Model Emulator v2.0.0
 
 A Pinokio app that provides a local OpenAI-compatible HTTP endpoint with **model name emulation** powered by LiteLLM proxy server. Route any model name to any provider - make Pinokio apps think they're talking to one model while actually using another.
 
@@ -7,6 +7,34 @@ A Pinokio app that provides a local OpenAI-compatible HTTP endpoint with **model
 A **model name emulator** that translates model names for Pinokio applications. Configure your preferred provider and model, set an emulated model name, and Pinokio apps will believe they're using that model while actually getting responses from your configured provider.
 
 **Example**: Configure the emulator to respond to `gpt-4` requests while actually routing them to DeepSeek or Groq.
+
+## Known Limitations
+
+**This release (2.0.0) is a wildcard passthrough, not a true emulator.**
+
+The UI shows "Emulated Model Name" configuration, but this feature is not yet functional. Here's what actually happens:
+
+✅ **What works:**
+- Wildcard provider routing (e.g., `groq/*`, `cerebras/*`, `deepseek/*`)
+- All models from connected providers are exposed
+- OpenAI-compatible endpoint at localhost:11434
+- Provider account management with secure API key storage
+
+❌ **What doesn't work:**
+- True model name emulation/translation
+- The `/emulator/start` endpoint returns success but doesn't implement mapping
+- You cannot make apps request "gpt-4" and have it route to a different model
+- The "Emulated Model Name" field in Step 4 has no effect
+
+**Why:** Implementing true emulation requires a database (PostgreSQL or SQLite) with Prisma ORM to use LiteLLM's `/model/new` API for dynamic model registration. The current architecture uses static config.yaml with wildcard routes.
+
+**Roadmap for v2.1.0:**
+- Add database support with Prisma
+- Implement `/model/new` API integration
+- Build true model name translation
+- Complete server.py backend rewrite
+
+**Current use case:** If you need multi-provider access through a unified endpoint with wildcard routing, this release works perfectly. If you specifically need model name emulation, wait for v2.1.0.
 
 ## Architecture
 
