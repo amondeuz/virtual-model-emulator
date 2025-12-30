@@ -1,12 +1,12 @@
 module.exports = {
   daemon: true,
   run: [
-    // Start LiteLLM proxy
+    // Start LiteLLM proxy (DATABASE_URL cleared via command)
     {
       method: "shell.run",
       params: {
         venv: "env",
-        message: "litellm --config config.yaml --port 11434 --host 127.0.0.1",
+        message: "set DATABASE_URL= && litellm --config config.yaml --port 11434 --host 127.0.0.1",
         on: [{ event: "/Uvicorn running/", done: true }]
       }
     },
