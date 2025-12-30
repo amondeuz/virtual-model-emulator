@@ -33,47 +33,11 @@ if os.path.exists(config_file):
     print('[OK] config.yaml already exists.')
 else:
     master_key = 'sk-' + secrets.token_hex(16)
-    config_content = f'''model_list:
-  - model_name: "cerebras/*"
-    litellm_params:
-      model: "cerebras/*"
-      api_key: "os.environ/CEREBRAS_API_KEY"
-  - model_name: "groq/*"
-    litellm_params:
-      model: "groq/*"
-      api_key: "os.environ/GROQ_API_KEY"
-  - model_name: "bytez/*"
-    litellm_params:
-      model: "bytez/*"
-      api_key: "os.environ/BYTEZ_API_KEY"
-  - model_name: "deepseek/*"
-    litellm_params:
-      model: "deepseek/*"
-      api_key: "os.environ/DEEPSEEK_API_KEY"
-  - model_name: "gemini/*"
-    litellm_params:
-      model: "gemini/*"
-      api_key: "os.environ/GEMINI_API_KEY"
-  - model_name: "huggingface/*"
-    litellm_params:
-      model: "huggingface/*"
-      api_key: "os.environ/HF_TOKEN"
-  - model_name: "openrouter/*"
-    litellm_params:
-      model: "openrouter/*"
-      api_key: "os.environ/OPENROUTER_API_KEY"
-  - model_name: "aiml/*"
-    litellm_params:
-      model: "aiml/*"
-      api_key: "os.environ/AIML_API_KEY"
-  - model_name: "cloudflare/*"
-    litellm_params:
-      model: "cloudflare/*"
-      api_key: "os.environ/CLOUDFLARE_API_KEY"
+    config_content = f'''model_list: []
 
 general_settings:
   master_key: {master_key}
-  database_url: null
+  database_url: "sqlite:///./litellm.db"
 
 litellm_settings:
   drop_params: true
@@ -81,7 +45,7 @@ litellm_settings:
 '''
     with open(config_file, 'w') as f:
         f.write(config_content)
-    print(f'[OK] config.yaml generated with database disabled.')
+    print(f'[OK] config.yaml generated with empty model list.')
 
 # 3. CREATE INSTALLATION MARKER
 print('\\n[3/3] Finalizing installation...')
@@ -92,7 +56,7 @@ print('[OK] Installation marker created.')
 
 print('\\n' + '='*60)
 print('INSTALLATION COMPLETE')
-print('Database features disabled - running in basic routing mode')
+print('Wildcards will be added dynamically when providers are connected.')
 print('='*60)
 `
       }
