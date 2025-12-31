@@ -59,6 +59,16 @@ def get_providers_with_accounts():
 
 def add_wildcard_to_database(provider_id, api_key):
     """Add a wildcard route for a provider to the LiteLLM database via /model/new API."""
+
+    # Check if wildcard already exists (defensive - prevents duplicates)
+    models_info = litellm_request("/model/info")
+    if "data" in models_info:
+        for model_data in models_info.get("data", []):
+            model_name = model_data.get("model_info", {}).get("model_name", "")
+            if model_name == f"{provider_id}/*":
+                print(f"[INFO] Wildcard route {provider_id}/* already exists in database")
+                return {"success": True, "message": "Already exists"}
+
     model_data = {
         "model_name": f"{provider_id}/*",
         "litellm_params": {
@@ -129,7 +139,7 @@ def litellm_request(path, method="GET", data=None):
         else:
             req = urllib.request.Request(url, headers=headers, method=method)
 
-        with urllib.request.urlopen(req, timeout=10) as response:
+        with urllib.request.urlopen(req, timeout=30) as response:
             return json.loads(response.read().decode())
     except urllib.error.HTTPError as e:
         return {"error": str(e), "status": e.code}
@@ -336,19 +346,20 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
             provider_accounts = get_accounts_for_provider(provider)
             is_first_account = len(provider_accounts) == 0
 
+            # Add wildcard route FIRST (before saving account)
+            if is_first_account:
+                result = add_wildcard_to_database(provider, api_key)
+                if "error" in result:
+                    self.send_json({"success": False, "error": result.get("error")}, 500)
+                    return  # Safe - nothing was saved yet
+
+            # Only save account after wildcard succeeded (or wasn't needed)
             accounts.append({
                 "provider": provider,
                 "accountName": account_name,
                 "apiKey": api_key
             })
             save_accounts(accounts)
-
-            # Add wildcard route to database if this is the first account for this provider
-            if is_first_account:
-                result = add_wildcard_to_database(provider, api_key)
-                if "error" in result:
-                    self.send_json({"success": False, "error": result.get("error")}, 500)
-                    return
 
             self.send_json({"success": True})
 
