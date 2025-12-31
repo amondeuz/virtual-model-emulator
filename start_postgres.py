@@ -25,30 +25,37 @@ try:
 except Exception as e:
     print(f'[DEBUG] Status check: {e}', flush=True)
 
-# Start PostgreSQL
+# Start PostgreSQL with -w flag to wait for startup
 try:
+    print('[INFO] Starting PostgreSQL server...', flush=True)
     result = subprocess.run([
         pg_ctl, 'start',
+        '-w',  # Wait for startup to complete
+        '-t', '30',  # Timeout after 30 seconds
         '-D', data_dir,
-        '-l', 'postgres/logfile',
-        '-o', '-p 5432'
-    ], capture_output=True, text=True, timeout=10)
-    
+        '-l', 'postgres/logfile'
+    ], capture_output=True, text=True, timeout=35)
+
     if result.returncode != 0:
         print(f'[ERROR] pg_ctl failed: {result.stderr}', flush=True)
         sys.exit(1)
-        
+
+    print('[OK] PostgreSQL started', flush=True)
+
+except subprocess.TimeoutExpired:
+    print('[ERROR] PostgreSQL startup timed out', flush=True)
+    sys.exit(1)
 except Exception as e:
     print(f'[ERROR] Failed to start: {e}', flush=True)
     sys.exit(1)
 
-# Wait for PostgreSQL to be ready
-print('[INFO] Waiting for PostgreSQL to be ready...', flush=True)
-time.sleep(3)
+# Give it a moment to fully initialize
+time.sleep(2)
 
 # Create litellm database if it doesn't exist
 createdb = os.path.join(bin_dir, 'createdb.exe')
 try:
+    print('[INFO] Creating litellm database...', flush=True)
     result = subprocess.run(
         [createdb, '-U', 'postgres', 'litellm'],
         capture_output=True,
@@ -56,8 +63,13 @@ try:
         timeout=10
     )
     # Ignore error if database already exists
-    if result.returncode != 0 and 'already exists' not in result.stderr:
-        print(f'[WARN] createdb: {result.stderr}', flush=True)
+    if result.returncode != 0:
+        if 'already exists' in result.stderr:
+            print('[OK] Database already exists', flush=True)
+        else:
+            print(f'[WARN] createdb: {result.stderr}', flush=True)
+    else:
+        print('[OK] Database created', flush=True)
 except Exception as e:
     print(f'[WARN] createdb failed: {e}', flush=True)
 
