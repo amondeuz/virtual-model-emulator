@@ -62,3 +62,6 @@ Desktop.ini
 # LiteLLM config with secrets
 config.yaml
 litellm.db
+
+# PostgreSQL
+postgres/

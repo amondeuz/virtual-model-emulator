@@ -1,5 +1,37 @@
 # Changelog
 
+## [2.1.1] - 2025-12-31
+
+### Changed - PostgreSQL Database Backend
+
+This version replaces SQLite with PostgreSQL for improved reliability and performance.
+
+**What's new:**
+- Portable PostgreSQL 16.1 installation (no system-wide install needed)
+- Automatic PostgreSQL download and initialization during install
+- `.env` file generation with secure database credentials
+- `start_postgres.py` script for reliable database startup
+- PostgreSQL starts automatically before LiteLLM
+
+**Technical changes:**
+- `install.js`: Added PostgreSQL download, extraction, and initialization
+- `start.js`: Added PostgreSQL startup step before LiteLLM
+- `config.yaml`: Changed `database_url` from SQLite to `env/DATABASE_URL`
+- `.gitignore`: Added `postgres/` directory
+- New file: `start_postgres.py` for database startup management
+- New file: `.env` with `DATABASE_URL` and `LITELLM_MASTER_KEY`
+
+**Breaking changes:**
+- Existing SQLite databases (`litellm.db`) will not be migrated
+- Fresh installation required for existing users
+
+**Upgrade notes:**
+- Delete `litellm.db` before upgrading
+- Run fresh install to download PostgreSQL
+- Reconfigure provider accounts after upgrade
+
+---
+
 ## [2.1.0] - 2025-12-31
 
 ### Added - True Model Emulation
