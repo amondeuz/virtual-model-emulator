@@ -5,6 +5,14 @@ module.exports = {
       method: "shell.run",
       params: {
         venv: "env",
+        message: "python start_postgres.py",
+        on: [{ event: "/PostgreSQL ready/", done: true }]
+      }
+    },
+    {
+      method: "shell.run",
+      params: {
+        venv: "env",
         message: "litellm --config config.yaml --port 11434 --host 127.0.0.1",
         on: [{ event: "/Uvicorn running/", done: true }]
       }

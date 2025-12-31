@@ -1,6 +1,6 @@
-# Virtual Model Emulator v2.1.0
+# Virtual Model Emulator v2.1.1
 
-A Pinokio app that provides a local OpenAI-compatible HTTP endpoint with **true model name emulation** powered by LiteLLM proxy server and SQLite database. Route any model name to any provider - make Pinokio apps think they're talking to one model while actually using another.
+A Pinokio app that provides a local OpenAI-compatible HTTP endpoint with **true model name emulation** powered by LiteLLM proxy server and PostgreSQL database. Route any model name to any provider - make Pinokio apps think they're talking to one model while actually using another.
 
 ## What is this?
 
@@ -8,7 +8,7 @@ A **model name emulator** that translates model names for Pinokio applications. 
 
 **Example**: Configure the emulator to respond to `gpt-4` requests while actually routing them to DeepSeek or Groq.
 
-## Features (v2.1.0)
+## Features (v2.1.1)
 
 ### ✅ What Works
 
@@ -26,7 +26,8 @@ A **model name emulator** that translates model names for Pinokio applications. 
 - Multiple emulations can be active simultaneously
 
 **Database-Backed Configuration:**
-- SQLite database for persistent model registration
+- PostgreSQL database for persistent model registration
+- Portable PostgreSQL installation (no system-wide install needed)
 - No restarts required when adding/removing models
 - Configuration survives app restarts
 
@@ -251,11 +252,16 @@ print(response.choices[0].message.content)
 │   └── connect.html      # Provider account management UI
 ├── config/
 │   └── accounts.json     # Saved accounts (server-side, gitignored)
+├── postgres/             # PostgreSQL installation (gitignored)
+│   ├── bin/              # PostgreSQL binaries
+│   └── data/             # Database data files
 ├── server.py             # Backend API server + static file serving
+├── start_postgres.py     # PostgreSQL startup script
 ├── start.js              # Pinokio start script
 ├── install.js            # Pinokio install script
 ├── pinokio.js            # Pinokio app definition (v5.3.0)
 ├── config.yaml           # LiteLLM config (generated)
+├── .env                  # Database credentials (generated, gitignored)
 ├── requirements.txt      # Python dependencies (litellm[proxy])
 ├── CHANGELOG.md          # Version history
 └── README.md             # This file
@@ -263,21 +269,21 @@ print(response.choices[0].message.content)
 
 ## Database Storage
 
-The SQLite database is stored at:
+PostgreSQL database is installed locally in the `postgres/` directory with data at:
 ```
-~/pinokio/api/virtual-model-emulator.git/litellm.db
+postgres/data/
 ```
 
-This file contains:
+The `litellm` database contains:
 - Model registrations (wildcards + emulations)
 - Active emulation configurations
 - Internal LiteLLM proxy state
 
 **Persistence**: Emulations and wildcards survive app restarts.
 
-**Backup**: To preserve your configuration across reinstalls, backup `litellm.db` before updating.
+**Backup**: To preserve your configuration across reinstalls, backup the entire `postgres/data/` directory.
 
-**Reset**: Delete `litellm.db` to start fresh. It will be recreated on next startup.
+**Reset**: Delete the `postgres/` directory and reinstall to start fresh.
 
 ## Security
 
@@ -309,28 +315,30 @@ The LiteLLM proxy exposes these endpoints:
 - Ensure `litellm[proxy]` is installed, not just `litellm`
 - Reinstall: `pip install 'litellm[proxy]'`
 
-**"Prisma Client not configured" error on startup**
-1. Stop the app
-2. Run: `pip install --upgrade litellm[proxy] prisma`
-3. Restart the app
+**"Unable to connect to database" error on startup**
+1. Check if PostgreSQL is running: `postgres\bin\pg_ctl.exe status -D postgres\data`
+2. If not running: `python start_postgres.py`
+3. Verify `.env` file exists with DATABASE_URL
+4. Restart the app
+
+**PostgreSQL won't start**
+1. Check if port 5432 is in use: `netstat -an | grep 5432`
+2. Check `postgres/logfile` for error messages
+3. Try reinitializing: delete `postgres/data` and run install again
 
 **"Migration failed" error on startup**
 1. Stop the app
-2. Backup `litellm.db` (if you want to preserve data)
-3. Delete `litellm.db`
-4. Restart app (fresh database will be created)
-5. Reconnect providers and reconfigure emulations
-
-**Database file not found after restart**
-- Check that `litellm.db` exists in the app directory
-- Verify file permissions (should be readable/writable)
-- Check Pinokio logs for database errors
+2. Stop PostgreSQL: `postgres\bin\pg_ctl.exe stop -D postgres\data`
+3. Backup `postgres/data/` (if you want to preserve data)
+4. Delete the `postgres/` directory
+5. Reinstall the app (fresh database will be created)
+6. Reconnect providers and reconfigure emulations
 
 **Emulation not working after restart**
 1. Check `/emulator/status` endpoint shows emulator running
-2. Verify `litellm.db` file exists
+2. Verify PostgreSQL is running: `python start_postgres.py`
 3. Try stopping and restarting the emulation
-4. If issue persists, delete `litellm.db` and reconfigure
+4. If issue persists, reset the database and reconfigure
 
 **Models not appearing**
 - Click the refresh button next to LiteLLM status
