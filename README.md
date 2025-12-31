@@ -261,6 +261,24 @@ print(response.choices[0].message.content)
 └── README.md             # This file
 ```
 
+## Database Storage
+
+The SQLite database is stored at:
+```
+~/pinokio/api/virtual-model-emulator.git/litellm.db
+```
+
+This file contains:
+- Model registrations (wildcards + emulations)
+- Active emulation configurations
+- Internal LiteLLM proxy state
+
+**Persistence**: Emulations and wildcards survive app restarts.
+
+**Backup**: To preserve your configuration across reinstalls, backup `litellm.db` before updating.
+
+**Reset**: Delete `litellm.db` to start fresh. It will be recreated on next startup.
+
 ## Security
 
 - **API keys stored server-side** in `config/accounts.json` (gitignored)
@@ -290,6 +308,29 @@ The LiteLLM proxy exposes these endpoints:
 **"No module named 'backoff'" error**
 - Ensure `litellm[proxy]` is installed, not just `litellm`
 - Reinstall: `pip install 'litellm[proxy]'`
+
+**"Prisma Client not configured" error on startup**
+1. Stop the app
+2. Run: `pip install --upgrade litellm[proxy] prisma`
+3. Restart the app
+
+**"Migration failed" error on startup**
+1. Stop the app
+2. Backup `litellm.db` (if you want to preserve data)
+3. Delete `litellm.db`
+4. Restart app (fresh database will be created)
+5. Reconnect providers and reconfigure emulations
+
+**Database file not found after restart**
+- Check that `litellm.db` exists in the app directory
+- Verify file permissions (should be readable/writable)
+- Check Pinokio logs for database errors
+
+**Emulation not working after restart**
+1. Check `/emulator/status` endpoint shows emulator running
+2. Verify `litellm.db` file exists
+3. Try stopping and restarting the emulation
+4. If issue persists, delete `litellm.db` and reconfigure
 
 **Models not appearing**
 - Click the refresh button next to LiteLLM status
