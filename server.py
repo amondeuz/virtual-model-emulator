@@ -9,8 +9,6 @@ import socketserver
 import urllib.request
 import urllib.parse
 import urllib.error
-import subprocess
-import platform
 from pathlib import Path
 
 PORT = 8765
@@ -59,70 +57,46 @@ def get_providers_with_accounts():
         providers_with_accounts.add(acc["provider"])
     return list(providers_with_accounts)
 
-def regenerate_config_yaml():
-    """Regenerate config.yaml with wildcards for providers that have accounts."""
-    config_file = BASE_DIR / "config.yaml"
-    master_key = get_master_key()
-    
-    providers_with_accounts = get_providers_with_accounts()
-    
-    # Get first API key for each provider (for wildcard route)
-    accounts = load_accounts()
-    provider_keys = {}
-    for provider_id in providers_with_accounts:
-        # Find first account for this provider
-        for acc in accounts:
-            if acc["provider"] == provider_id:
-                provider_keys[provider_id] = acc["apiKey"]
-                break
-    
-    # Build model_list with wildcards
-    model_list = []
-    for provider_id in sorted(providers_with_accounts):
-        if provider_id in provider_keys:
-            model_list.append({
-                "model_name": f"{provider_id}/*",
-                "litellm_params": {
-                    "model": f"{provider_id}/*",
-                    "api_key": provider_keys[provider_id]
-                }
-            })
-    
-    # Generate YAML content
-    config_content = "model_list:\n"
-    if model_list:
-        for model in model_list:
-            config_content += f"  - model_name: \"{model['model_name']}\"\n"
-            config_content += f"    litellm_params:\n"
-            config_content += f"      model: \"{model['litellm_params']['model']}\"\n"
-            config_content += f"      api_key: \"{model['litellm_params']['api_key']}\"\n"
+def add_wildcard_to_database(provider_id, api_key):
+    """Add a wildcard route for a provider to the LiteLLM database via /model/new API."""
+    model_data = {
+        "model_name": f"{provider_id}/*",
+        "litellm_params": {
+            "model": f"{provider_id}/*",
+            "api_key": api_key
+        }
+    }
+    result = litellm_request("/model/new", method="POST", data=model_data)
+    if "error" not in result:
+        print(f"[INFO] Added wildcard route {provider_id}/* to database")
     else:
-        config_content += "  []\n"
-    
-    config_content += f"\ngeneral_settings:\n"
-    config_content += f"  master_key: {master_key}\n"
-    config_content += f"\nlitellm_settings:\n"
-    config_content += f"  drop_params: true\n"
-    config_content += f"  check_provider_endpoint: true\n"
-    
-    config_file.write_text(config_content)
-    print(f"[INFO] Regenerated config.yaml with {len(model_list)} wildcard providers")
+        print(f"[WARNING] Failed to add wildcard route {provider_id}/*: {result.get('error')}")
+    return result
 
-def restart_litellm():
-    """Restart LiteLLM process by killing it (Pinokio will auto-restart)."""
-    try:
-        if platform.system() == "Windows":
-            # Kill litellm processes on Windows
-            subprocess.run(["taskkill", "/F", "/IM", "litellm.exe"], capture_output=True)
-            subprocess.run(["taskkill", "/F", "/FI", "WINDOWTITLE eq litellm*"], capture_output=True)
-        else:
-            # Kill litellm processes on Unix
-            subprocess.run(["pkill", "-f", "litellm"], capture_output=True)
-        print("[INFO] Sent restart signal to LiteLLM")
-        return True
-    except Exception as e:
-        print(f"[WARNING] Could not restart LiteLLM: {e}")
+def remove_wildcard_from_database(provider_id):
+    """Remove a wildcard route for a provider from the LiteLLM database via /model/delete API."""
+    # Get current models from database
+    models_info = litellm_request("/model/info")
+
+    if "error" in models_info:
+        print(f"[WARNING] Failed to get model info: {models_info.get('error')}")
         return False
+
+    # Find and delete the wildcard route for this provider
+    for model_data in models_info.get("data", []):
+        model_info = model_data.get("model_info", {})
+        model_name = model_info.get("model_name", "")
+
+        if model_name == f"{provider_id}/*":
+            model_id = model_info.get("id")
+            if model_id:
+                result = litellm_request("/model/delete", method="POST", data={"id": model_id})
+                if "error" not in result:
+                    print(f"[INFO] Removed wildcard route {provider_id}/* from database")
+                    return True
+                else:
+                    print(f"[WARNING] Failed to remove wildcard route: {result.get('error')}")
+    return False
 
 def is_wildcard_model(model_name):
     """Check if a model is a wildcard passthrough (not an explicit emulation)."""
@@ -369,10 +343,12 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
             })
             save_accounts(accounts)
 
-            # Regenerate config.yaml and restart LiteLLM if this is the first account for this provider
+            # Add wildcard route to database if this is the first account for this provider
             if is_first_account:
-                regenerate_config_yaml()
-                restart_litellm()
+                result = add_wildcard_to_database(provider, api_key)
+                if "error" in result:
+                    self.send_json({"success": False, "error": result.get("error")}, 500)
+                    return
 
             self.send_json({"success": True})
 
@@ -387,14 +363,25 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
 
             # Check if any accounts remain for this provider
             remaining_accounts = get_accounts_for_provider(provider)
+            deleted = False
             if len(remaining_accounts) == 0:
-                # Remove wildcard from config.yaml and restart LiteLLM
-                regenerate_config_yaml()
-                restart_litellm()
+                # Remove wildcard route from database
+                deleted = remove_wildcard_from_database(provider)
 
-            self.send_json({"success": True})
+            self.send_json({"success": True, "deleted": deleted})
 
         elif path == "/emulator/start":
+            """
+            Start model emulation by registering explicit model mapping in database.
+
+            Request format:
+            {
+                "provider": "groq",
+                "model": "llama-3.3-70b-versatile",
+                "emulatedModelName": "gpt-4",
+                "account": "account-name" (optional)
+            }
+            """
             data = self.read_json_body()
             account_name = data.get("account", "")
             provider = data.get("provider")
@@ -403,6 +390,10 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
 
             if not provider or not model:
                 self.send_json({"success": False, "error": "Provider and model required"}, 400)
+                return
+
+            if not emulated_name:
+                self.send_json({"success": False, "error": "Emulated model name required"}, 400)
                 return
 
             # Find API key
@@ -429,15 +420,86 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
             prefix = prov["prefix"] if prov else ""
             full_model = f"{prefix}{model}"
 
-            # For now, emulations are added via config.yaml
-            # This endpoint acknowledges the request but actual implementation
-            # would require writing to config.yaml and restarting LiteLLM
-            self.send_json({"success": True, "message": "Emulation feature requires config.yaml update"})
+            # Register emulation via /model/new API
+            # model_name: What user requests (e.g., "gpt-4")
+            # litellm_params.model: What actually gets called (e.g., "groq/llama-3.3-70b-versatile")
+            model_data = {
+                "model_name": emulated_name,
+                "litellm_params": {
+                    "model": full_model,
+                    "api_key": api_key
+                }
+            }
+
+            result = litellm_request("/model/new", method="POST", data=model_data)
+
+            if "error" in result:
+                self.send_json({
+                    "success": False,
+                    "error": result.get("error")
+                }, 500)
+            else:
+                model_id = result.get("model_info", {}).get("id")
+                print(f"[INFO] Started emulation: {emulated_name} → {full_model}")
+                self.send_json({
+                    "success": True,
+                    "modelId": model_id,
+                    "emulatedName": emulated_name,
+                    "actualModel": full_model
+                })
 
         elif path == "/emulator/stop":
-            # For config.yaml approach, stopping means removing explicit emulations
-            # Wildcards remain in place
-            self.send_json({"success": True, "deleted": 0})
+            """
+            Stop all active emulations by deleting explicit model mappings.
+            Wildcard routes remain active.
+            """
+            # Get all registered models
+            models_info = litellm_request("/model/info")
+
+            if "error" in models_info:
+                self.send_json({
+                    "success": False,
+                    "error": models_info.get("error")
+                }, 500)
+                return
+
+            deleted_count = 0
+            emulations = []
+
+            # Iterate through all models
+            for model_data in models_info.get("data", []):
+                model_info = model_data.get("model_info", {})
+                model_name = model_info.get("model_name", "")
+                litellm_params = model_data.get("litellm_params", {})
+                actual_model = litellm_params.get("model", "")
+
+                # Skip wildcard routes (these are NOT emulations)
+                if is_wildcard_model(model_name):
+                    continue
+
+                # This is an emulation if model_name != actual_model
+                # Example: model_name="gpt-4", actual_model="groq/llama-3.3-70b-versatile"
+                if model_name != actual_model:
+                    model_id = model_info.get("id")
+
+                    if model_id:
+                        # Delete this emulation
+                        result = litellm_request("/model/delete", method="POST",
+                                               data={"id": model_id})
+
+                        if "error" not in result:
+                            deleted_count += 1
+                            emulations.append({
+                                "emulatedName": model_name,
+                                "actualModel": actual_model
+                            })
+                            print(f"[INFO] Stopped emulation: {model_name} → {actual_model}")
+
+            self.send_json({
+                "success": True,
+                "deleted": deleted_count,
+                "emulations": emulations
+            })
 
         elif path == "/config/save":
             # Just acknowledge - config is applied on start

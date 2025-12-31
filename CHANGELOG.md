@@ -1,5 +1,45 @@
 # Changelog
 
+## [2.1.0] - 2025-12-31
+
+### Added - True Model Emulation
+
+This version implements **true model name emulation** using LiteLLM's database-backed model management.
+
+**What's new:**
+- SQLite database integration via Prisma ORM
+- Dynamic model registration using `/model/new` API
+- True model name translation/interception
+- Emulated models persist across restarts
+
+**How emulation works:**
+1. Connect provider accounts (stores API keys)
+2. Configure emulation (which model to call, what name to use)
+3. Start emulator (registers mapping in database)
+4. Apps request emulated name (e.g., "gpt-4")
+5. LiteLLM routes to actual model (e.g., "groq/llama-3.3-70b-versatile")
+
+**Technical changes:**
+- Added SQLite database: `file:./litellm.db`
+- Removed static config.yaml regeneration
+- Implemented `/model/new` API integration
+- Rewrote `/emulator/start` and `/emulator/stop` endpoints
+- Wildcard routes now managed via database instead of config.yaml
+- Added `add_wildcard_to_database()` and `remove_wildcard_from_database()` functions
+- Removed `regenerate_config_yaml()` and `restart_litellm()` functions
+- Added Prisma dependency to install.js
+
+**Breaking changes:**
+- None - wildcard passthrough still works identically
+- Database file `litellm.db` will be created on first run
+
+**Upgrade notes:**
+- Existing provider accounts are preserved
+- Wildcard routes will be re-registered in database on first connection
+- No manual migration needed
+
+---
+
 ## [2.0.0] - 2025-12-30
 
 ### Released - Wildcard Provider Passthrough

@@ -1,6 +1,6 @@
 {
   "title": "Virtual Model Emulator",
-  "description": "OpenAI-compatible endpoint powered by LiteLLM proxy. Supports 9 AI providers with model name emulation.",
+  "description": "OpenAI-compatible endpoint powered by LiteLLM proxy. Supports 9 AI providers with true model name emulation via SQLite database.",
   "icon": "icon.png",
-  "version": "2.0.0"
+  "version": "2.1.0"
 }

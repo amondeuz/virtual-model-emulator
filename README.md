@@ -1,6 +1,6 @@
-# Virtual Model Emulator v2.0.0
+# Virtual Model Emulator v2.1.0
 
-A Pinokio app that provides a local OpenAI-compatible HTTP endpoint with **model name emulation** powered by LiteLLM proxy server. Route any model name to any provider - make Pinokio apps think they're talking to one model while actually using another.
+A Pinokio app that provides a local OpenAI-compatible HTTP endpoint with **true model name emulation** powered by LiteLLM proxy server and SQLite database. Route any model name to any provider - make Pinokio apps think they're talking to one model while actually using another.
 
 ## What is this?
 
@@ -8,33 +8,85 @@ A **model name emulator** that translates model names for Pinokio applications. 
 
 **Example**: Configure the emulator to respond to `gpt-4` requests while actually routing them to DeepSeek or Groq.
 
-## Known Limitations
+## Features (v2.1.0)
 
-**This release (2.0.0) is a wildcard passthrough, not a true emulator.**
+### ✅ What Works
 
-The UI shows "Emulated Model Name" configuration, but this feature is not yet functional. Here's what actually happens:
-
-✅ **What works:**
-- Wildcard provider routing (e.g., `groq/*`, `cerebras/*`, `deepseek/*`)
-- All models from connected providers are exposed
+**Wildcard Provider Routing:**
+- Connect provider accounts with API keys
+- Automatic wildcard routes (groq/*, cerebras/*, etc.)
+- All models from connected providers exposed
 - OpenAI-compatible endpoint at localhost:11434
-- Provider account management with secure API key storage
 
-❌ **What doesn't work:**
-- True model name emulation/translation
-- The `/emulator/start` endpoint returns success but doesn't implement mapping
-- You cannot make apps request "gpt-4" and have it route to a different model
-- The "Emulated Model Name" field in Step 4 has no effect
+**True Model Name Emulation:**
+- Configure which model to call and what name to use
+- Apps request emulated name (e.g., "gpt-4")
+- LiteLLM routes to actual model (e.g., "groq/llama-3.3-70b-versatile")
+- Emulations persist across restarts (stored in database)
+- Multiple emulations can be active simultaneously
 
-**Why:** Implementing true emulation requires a database (PostgreSQL or SQLite) with Prisma ORM to use LiteLLM's `/model/new` API for dynamic model registration. The current architecture uses static config.yaml with wildcard routes.
+**Database-Backed Configuration:**
+- SQLite database for persistent model registration
+- No restarts required when adding/removing models
+- Configuration survives app restarts
 
-**Roadmap for v2.1.0:**
-- Add database support with Prisma
-- Implement `/model/new` API integration
-- Build true model name translation
-- Complete server.py backend rewrite
+### 🔧 How It Works
 
-**Current use case:** If you need multi-provider access through a unified endpoint with wildcard routing, this release works perfectly. If you specifically need model name emulation, wait for v2.1.0.
+**Architecture:**
+1. **Provider Accounts** → Store API keys securely
+2. **Wildcard Routes** → Added to database when provider connected
+3. **Model Emulation** → Explicit name mappings via `/model/new` API
+4. **LiteLLM Proxy** → Intercepts requests and routes to correct provider
+
+**Example Flow:**
+```
+App requests "gpt-4"
+  ↓
+LiteLLM checks database
+  ↓
+Finds mapping: "gpt-4" → "groq/llama-3.3-70b-versatile"
+  ↓
+Routes to Groq API with API key from connected account
+  ↓
+Returns response to app
+```
+
+## Quick Start - Emulation
+
+**1. Connect a Provider**
+- Click "Connect" on any provider card
+- Enter your API key
+- Provider shows "Online" with green status
+
+**2. Configure Emulation**
+- Step 1: Select Account (choose connected provider account)
+- Step 2: Select Provider (e.g., Groq)
+- Step 3: Select Model (e.g., llama-3.3-70b-versatile)
+- Step 4: Emulated Model Name (e.g., gpt-4)
+
+**3. Start Emulator**
+- Click "Start Emulator"
+- Status shows "Active emulation: gpt-4 → groq/llama-3.3-70b-versatile"
+
+**4. Use in Your App**
+```python
+import openai
+
+client = openai.OpenAI(
+    api_key="anything",
+    base_url="http://localhost:11434/v1"
+)
+
+# Request "gpt-4" but actually gets Groq's Llama model
+response = client.chat.completions.create(
+    model="gpt-4",
+    messages=[{"role": "user", "content": "Hello!"}]
+)
+```
+
+**5. Stop Emulator**
+- Click "Stop Emulator" to remove emulation
+- Wildcard routes remain active
 
 ## Architecture
 
