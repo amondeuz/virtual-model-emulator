@@ -60,8 +60,24 @@ if not os.path.exists(postgres_dir):
     bin_dir = os.path.join(postgres_dir, 'bin')
     initdb = os.path.join(bin_dir, 'initdb.exe')
 
-    run_command(f'"{initdb}" -D "{data_dir}" -U postgres -A trust', 'Initializing database')
-    print('[OK] PostgreSQL installed and initialized.')
+    # Generate password for PostgreSQL
+    db_password = secrets.token_urlsafe(16)
+
+    # Write password to temp file for initdb (Windows-compatible)
+    password_file = 'postgres_pwd.tmp'
+    with open(password_file, 'w') as f:
+        f.write(db_password)
+
+    try:
+        run_command(f'"{initdb}" -D "{data_dir}" -U postgres -A md5 --pwfile="{password_file}"', 'Initializing database with password authentication')
+    finally:
+        # Clean up password file
+        if os.path.exists(password_file):
+            os.remove(password_file)
+
+    # Store password for .env generation
+    os.environ['PG_PASSWORD'] = db_password
+    print('[OK] PostgreSQL installed and initialized with password authentication.')
 else:
     print('[OK] PostgreSQL already installed.')
 
@@ -69,7 +85,8 @@ else:
 print('\\n[3/5] Generating .env file...')
 env_file = '.env'
 if not os.path.exists(env_file):
-    db_password = secrets.token_urlsafe(16)
+    # Use password from initialization, or generate new one if PostgreSQL was already installed
+    db_password = os.environ.get('PG_PASSWORD', secrets.token_urlsafe(16))
     env_content = f'''# Database Configuration
 DATABASE_URL=postgresql://postgres:{db_password}@localhost:5432/litellm
 

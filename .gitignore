@@ -65,3 +65,4 @@ litellm.db
 
 # PostgreSQL
 postgres/
+postgres_pwd.tmp
