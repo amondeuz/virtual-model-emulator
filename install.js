@@ -5,7 +5,8 @@ module.exports = {
       params: {
         path: "full_install.py",
         text: `# -*- coding: utf-8 -*-
-import sys, os, subprocess, secrets
+import sys, os, subprocess, secrets, stat
+from urllib.parse import quote as url_quote
 
 def run_command(cmd, desc=""):
     """Helper to run a command and print status."""
@@ -84,21 +85,30 @@ if not os.path.exists(postgres_dir):
     password_file = 'postgres_pwd.tmp'
     with open(password_file, 'w') as f:
         f.write(db_password)
+    # Set restrictive permissions immediately (security: prevent other users from reading)
+    try:
+        os.chmod(password_file, stat.S_IRUSR | stat.S_IWUSR)  # 0o600
+    except Exception:
+        pass  # Windows may not support chmod, continue anyway
 
     try:
         run_command(f'"{initdb}" -D "{data_dir}" -U postgres -A scram-sha-256 --pwfile="{password_file}"', 'Initializing database with scram-sha-256 authentication')
     finally:
-        # Clean up password file with verification
+        # Clean up password file with verification - MUST succeed for security
         try:
             if os.path.exists(password_file):
                 os.remove(password_file)
                 # Verify deletion succeeded
                 if os.path.exists(password_file):
-                    print(f'[WARNING] Failed to delete password file - manual cleanup required', flush=True)
-                    print(f'[WARNING] Delete this file manually: {password_file}', flush=True)
+                    print(f'[ERROR] Failed to delete password file: {password_file}', flush=True)
+                    print(f'[ERROR] This file contains the database password and MUST be deleted.', flush=True)
+                    print(f'[ERROR] Delete it manually and re-run install.', flush=True)
+                    sys.exit(1)
         except Exception as e:
             print(f'[ERROR] Could not delete password file: {e}', flush=True)
-            print(f'[ERROR] Delete this file manually: {password_file}', flush=True)
+            print(f'[ERROR] This file contains the database password and MUST be deleted.', flush=True)
+            print(f'[ERROR] Delete {password_file} manually and re-run install.', flush=True)
+            sys.exit(1)
 
     # Store password for .env generation
     os.environ['PG_PASSWORD'] = db_password
@@ -111,8 +121,10 @@ print('\\n[3/5] Generating .env file...')
 if not os.path.exists(env_file):
     # Use password from initialization, or generate new one if PostgreSQL was already installed
     db_password = os.environ.get('PG_PASSWORD', secrets.token_urlsafe(16))
+    # URL-encode password to handle special characters (+, /, =, etc.)
+    db_password_encoded = url_quote(db_password, safe='')
     env_content = f'''# Database Configuration
-DATABASE_URL=postgresql://postgres:{db_password}@localhost:5432/litellm?schema=public&connection_limit=10&pool_timeout=30&connect_timeout=10
+DATABASE_URL=postgresql://postgres:{db_password_encoded}@localhost:5432/litellm?schema=public&connection_limit=10&pool_timeout=30&connect_timeout=10
 
 # LiteLLM Configuration
 LITELLM_MASTER_KEY=sk-{secrets.token_hex(16)}

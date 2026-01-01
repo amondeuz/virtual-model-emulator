@@ -521,6 +521,13 @@
           startStopBtn.textContent = 'Start';
           return;
         }
+        // Validate emulated model name (cannot be empty/whitespace)
+        if (!emulatedModelName || !emulatedModelName.trim()) {
+          setMessage('Enter an emulated model name (cannot be empty).');
+          startStopBtn.disabled = false;
+          startStopBtn.textContent = 'Start';
+          return;
+        }
         saveConfig()
           .then(function() {
             return fetch('/emulator/start', {
@@ -587,21 +594,34 @@
 
     function refreshModels(force) {
       refreshModelsBtn.disabled = true;
+      var originalText = refreshModelsBtn.textContent;
+      refreshModelsBtn.textContent = 'Loading...';
+      setMessage('Loading models...');
+
       var provider = providerSelect.value || '';
       var url = '/models?force=' + (force ? 'true' : 'false') + (provider ? '&provider=' + provider : '');
 
       fetch(url)
         .then(function(res) { return res.json(); })
         .then(function(data) {
-          models = data.models || [];
+          // Check for offline/error response
+          if (data.error) {
+            showError(data.offline ? 'LiteLLM is offline. Cannot load models.' : data.error);
+            models = [];
+          } else {
+            models = data.models || [];
+            setMessage(force ? 'Models refreshed (' + models.length + ' found).' : 'Models loaded (' + models.length + ' found).');
+          }
           modelDropdown.refreshOptions();
-          setMessage(force ? 'Models refreshed.' : 'Models loaded.');
         })
         .catch(function(err) {
           showError('Failed to load models: ' + err.message);
+          models = [];
+          modelDropdown.refreshOptions();
         })
         .finally(function() {
           refreshModelsBtn.disabled = false;
+          refreshModelsBtn.textContent = originalText;
         });
     }
 

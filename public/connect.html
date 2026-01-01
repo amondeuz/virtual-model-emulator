@@ -345,7 +345,7 @@
 
       <div class="form-group">
         <label for="api-key-input">API Key</label>
-        <input type="password" id="api-key-input" placeholder="Paste your API key here">
+        <input type="password" id="api-key-input" placeholder="Paste your API key here" autocomplete="off" autocomplete="new-password">
         <p class="form-hint">
           <a id="api-key-link" href="#" target="_blank">Get your API key from the provider &rarr;</a>
         </p>
@@ -353,7 +353,7 @@
 
       <div class="modal-buttons">
         <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-        <button class="btn btn-primary" onclick="saveAccount()">Save Account</button>
+        <button class="btn btn-primary" id="save-account-btn" onclick="saveAccount()">Save Account</button>
       </div>
     </div>
   </div>
@@ -375,6 +375,7 @@
     var accounts = [];
     var editMode = {};  // Track which provider is in edit mode
     var selectedProvider = null;  // Currently selected provider for the modal
+    var isSaving = false;  // Prevent double-submission
 
     function showStatus(message, type) {
       var container = document.getElementById('status-container');
@@ -634,9 +635,13 @@
     }
 
     function saveAccount() {
+      // Prevent double-submission
+      if (isSaving) return;
+
       var provider = selectedProvider ? selectedProvider.id : null;
       var accountName = document.getElementById('account-name-input').value.trim();
       var apiKey = document.getElementById('api-key-input').value.trim();
+      var saveBtn = document.getElementById('save-account-btn');
 
       if (!provider) {
         showStatus('Please select a provider', 'error');
@@ -650,6 +655,11 @@
         showStatus('Please enter an API key', 'error');
         return;
       }
+
+      // Set saving state
+      isSaving = true;
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving...';
 
       fetch('/providers/connect', {
         method: 'POST',
@@ -676,7 +686,13 @@
         }
       })
       .catch(function(err) {
-        showStatus('Connection error: ' + err.message, 'error');
+        showStatus('Connection error: ' + err.message + '. Please try again.', 'error');
+      })
+      .finally(function() {
+        // Reset saving state
+        isSaving = false;
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save Account';
       });
     }
 

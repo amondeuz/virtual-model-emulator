@@ -20,7 +20,7 @@ def is_port_in_use(port, retries=3):
         retries: Number of retry attempts for uncertain results
 
     Returns:
-        bool: True if port is in use, False otherwise
+        bool: True if port is in use or uncertain, False only if definitely free
     """
     for attempt in range(retries):
         try:
@@ -33,9 +33,12 @@ def is_port_in_use(port, retries=3):
                     return True  # Port is in use
 
                 # Connection refused - port is free (platform-specific codes)
+                # Windows: WSAECONNREFUSED = 10061
+                # Linux: ECONNREFUSED = 111
+                # macOS: ECONNREFUSED = 61
                 if sys.platform == 'win32' and result == 10061:
                     return False
-                if sys.platform != 'win32' and result == 111:
+                if sys.platform != 'win32' and result in (111, 61):
                     return False
 
                 # Uncertain result - will retry
@@ -47,8 +50,9 @@ def is_port_in_use(port, retries=3):
         if attempt < retries - 1:
             time.sleep(0.2)
 
-    # After all retries, assume port is free (fail-safe)
-    return False
+    # After all retries with uncertain result, assume port IS in use (fail closed for safety)
+    # This prevents initdb/pg_ctl from failing cryptically if port is actually in use
+    return True
 
 
 class PostgreSQLManager:
@@ -88,7 +92,9 @@ class PostgreSQLManager:
                 str(PG_CTL.resolve()), 'status',
                 '-D', str(self.data_dir.resolve())
             ], capture_output=True, text=True, timeout=5)
-            return 'server is running' in result.stdout
+            # Use return code for reliability (0 = running, non-zero = not running)
+            # This is more reliable than text matching across platforms/locales
+            return result.returncode == 0
         except Exception:
             return False
 
