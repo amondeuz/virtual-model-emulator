@@ -5,7 +5,7 @@ module.exports = {
       params: {
         path: "full_install.py",
         text: `# -*- coding: utf-8 -*-
-import sys, os, subprocess, secrets, stat
+import sys, os, subprocess, secrets, stat, hashlib
 from urllib.parse import quote as url_quote
 
 def run_command(cmd, desc=""):
@@ -24,11 +24,11 @@ print('='*60)
 # 1. INSTALL/UPGRADE DEPENDENCIES
 print('\\n[1/5] Installing/Upgrading dependencies...')
 run_command(f'"{sys.executable}" -m pip install --upgrade pip', "Upgrading pip")
-run_command(f'"{sys.executable}" -m pip install --upgrade litellm[proxy]', "Installing litellm[proxy]")
+run_command(f'"{sys.executable}" -m pip install --upgrade "litellm[proxy]>=1.10.0"', "Installing litellm[proxy]>=1.10.0")
 # Install Prisma for database support
-result = run_command(f'"{sys.executable}" -m pip install prisma', "Installing prisma")
+result = run_command(f'"{sys.executable}" -m pip install "prisma>=0.11.0"', "Installing prisma>=0.11.0")
 if result.returncode != 0:
-    run_command(f'"{sys.executable}" -m pip install --break-system-packages prisma', "Installing prisma (with --break-system-packages)")
+    run_command(f'"{sys.executable}" -m pip install --break-system-packages "prisma>=0.11.0"', "Installing prisma>=0.11.0 (with --break-system-packages)")
 print('[OK] Dependencies installed.')
 
 # 2. INSTALL POSTGRESQL (Windows)
@@ -39,6 +39,8 @@ import shutil
 
 postgres_version = '16.1-1'
 postgres_url = f'https://get.enterprisedb.com/postgresql/postgresql-{postgres_version}-windows-x64-binaries.zip'
+# SHA256 checksum for PostgreSQL 16.1-1 Windows x64 binaries (security hardening)
+postgres_sha256 = 'd03a765335b1cfe8b007ac8ca0ea84fcd42dba8e58234261c4a1c0f38be5ea8b'
 postgres_zip = 'postgres.zip'
 postgres_dir = 'postgres'
 env_file = '.env'
@@ -62,6 +64,22 @@ if not postgres_exists and env_exists:
 if not os.path.exists(postgres_dir):
     print(f'Downloading PostgreSQL {postgres_version}...')
     urllib.request.urlretrieve(postgres_url, postgres_zip)
+
+    # Verify SHA256 checksum for security
+    print('Verifying PostgreSQL checksum...')
+    sha256_hash = hashlib.sha256()
+    with open(postgres_zip, 'rb') as f:
+        for chunk in iter(lambda: f.read(8192), b''):
+            sha256_hash.update(chunk)
+    actual_checksum = sha256_hash.hexdigest()
+    if actual_checksum != postgres_sha256:
+        os.remove(postgres_zip)
+        print(f'[ERROR] PostgreSQL checksum verification failed!')
+        print(f'[ERROR] Expected: {postgres_sha256}')
+        print(f'[ERROR] Actual:   {actual_checksum}')
+        print(f'[ERROR] The downloaded file may be corrupted or tampered with.')
+        sys.exit(1)
+    print('[OK] Checksum verified.')
 
     print('Extracting PostgreSQL...')
     with zipfile.ZipFile(postgres_zip, 'r') as zip_ref:
@@ -183,6 +201,12 @@ print('='*60)
       params: {
         venv: "env",
         message: "python full_install.py"
+      }
+    },
+    {
+      method: "fs.rm",
+      params: {
+        path: "full_install.py"
       }
     }
   ]
