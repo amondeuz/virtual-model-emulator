@@ -8,6 +8,8 @@ A **model name emulator** that translates model names for Pinokio applications. 
 
 **Example**: Configure the emulator to respond to `gpt-4` requests while actually routing them to DeepSeek or Groq.
 
+**New to LiteLLM?** LiteLLM is an open-source library that provides a unified interface to 100+ AI providers (OpenAI, Anthropic, Google, etc.). This app uses LiteLLM as its routing engine - you don't need to know LiteLLM to use this app, but advanced users can leverage its full capabilities.
+
 ## Features (v2.1.2)
 
 ### ✅ What Works
@@ -23,7 +25,7 @@ A **model name emulator** that translates model names for Pinokio applications. 
 - Apps request emulated name (e.g., "gpt-4")
 - LiteLLM routes to actual model (e.g., "groq/llama-3.3-70b-versatile")
 - Emulations persist across restarts (stored in database)
-- Multiple emulations can be active simultaneously
+- Multiple emulations can be active simultaneously (backend supported; UI configures one at a time)
 
 **Database-Backed Configuration:**
 - PostgreSQL database for persistent model registration
@@ -67,7 +69,7 @@ Returns response to app
 
 **3. Start Emulator**
 - Click "Start Emulator"
-- Status shows "Active emulation: gpt-4 → groq/llama-3.3-70b-versatile"
+- Status shows the emulation is active (e.g., emulating "gpt-4")
 
 **4. Use in Your App**
 ```python
@@ -121,7 +123,7 @@ Request Flow:
 - **Secure Key Handling**: API keys stored server-side, never in browser localStorage
 - **4-Step Configuration**: Account → Provider → Model → Emulated Name
 - **OpenAI-Compatible Endpoint**: LiteLLM serves at `/v1/chat/completions`
-- **9 Providers**: AI/ML API, Bytez, Cerebras, Cloudflare, DeepSeek, Gemini, Groq, Hugging Face, OpenRouter
+- **9 Pre-configured Providers**: AI/ML API, Bytez, Cerebras, Cloudflare, DeepSeek, Gemini, Groq, Hugging Face, OpenRouter (LiteLLM supports 100+ providers)
 
 ## Installation
 
@@ -230,6 +232,8 @@ print(response.choices[0].message.content)
 ```
 
 ## Supported Providers
+
+The UI includes 9 pre-configured providers. LiteLLM supports 100+ providers - see [LiteLLM Provider Documentation](https://docs.litellm.ai/docs/providers) for the full list.
 
 | Provider | Prefix | Example Models |
 |----------|--------|----------------|
@@ -382,13 +386,12 @@ Override these settings if needed:
 export PG_PORT=5433
 ```
 
-**Master Key:**
-```bash
-# Override the auto-generated master key (must start with 'sk-')
-export LITELLM_MASTER_KEY=sk-your-custom-key-here
-```
-
 The app automatically handles port conflicts by scanning for available ports starting from 5432.
+
+## Known Limitations
+
+- **UI configures one emulation at a time**: The backend supports multiple simultaneous emulations, but the UI form configures them one at a time. To add multiple emulations, start one, then configure and start another.
+- **No bulk emulation management**: Stopping the emulator removes all active emulations at once.
 
 ## Resources
 
