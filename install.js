@@ -71,9 +71,17 @@ if not os.path.exists(postgres_dir):
     try:
         run_command(f'"{initdb}" -D "{data_dir}" -U postgres -A md5 --pwfile="{password_file}"', 'Initializing database with password authentication')
     finally:
-        # Clean up password file
-        if os.path.exists(password_file):
-            os.remove(password_file)
+        # Clean up password file with verification
+        try:
+            if os.path.exists(password_file):
+                os.remove(password_file)
+                # Verify deletion succeeded
+                if os.path.exists(password_file):
+                    print(f'[WARNING] Failed to delete password file - manual cleanup required', flush=True)
+                    print(f'[WARNING] Delete this file manually: {password_file}', flush=True)
+        except Exception as e:
+            print(f'[ERROR] Could not delete password file: {e}', flush=True)
+            print(f'[ERROR] Delete this file manually: {password_file}', flush=True)
 
     # Store password for .env generation
     os.environ['PG_PASSWORD'] = db_password

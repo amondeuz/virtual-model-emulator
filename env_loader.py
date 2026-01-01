@@ -1,6 +1,25 @@
 """Utility for loading .env files."""
 import os
 import sys
+from urllib.parse import urlparse
+
+
+def get_password_from_url(database_url):
+    """Extract password from PostgreSQL URL safely.
+
+    Handles URL-encoded passwords and special characters correctly.
+
+    Args:
+        database_url: PostgreSQL connection string
+
+    Returns:
+        str: The password, or None if not found
+    """
+    try:
+        parsed = urlparse(database_url)
+        return parsed.password  # Automatically handles URL decoding
+    except Exception:
+        return None
 
 
 def load_env(env_file='.env'):
