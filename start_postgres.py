@@ -9,7 +9,7 @@ from postgres_config import (
     PG_CTL, PSQL, CREATEDB, DATA_DIR, LOG_FILE,
     PG_PORT, PG_USER, PG_DATABASE, print_error
 )
-from env_loader import load_env
+from env_loader import load_env, get_password_from_url
 
 
 def is_port_in_use(port):
@@ -56,14 +56,11 @@ def get_pg_env():
     try:
         env_vars = load_env()
         database_url = env_vars.get('DATABASE_URL', '')
-        # Extract password from DATABASE_URL
-        # Format: postgresql://user:password@host:port/database
-        if ':' in database_url and '@' in database_url:
-            # Get the part between :// and @
-            auth_part = database_url.split('://')[1].split('@')[0]
-            if ':' in auth_part:
-                password = auth_part.split(':')[1]
-                env['PGPASSWORD'] = password
+        # Extract password using urllib.parse for safe handling
+        # of special characters and URL-encoded passwords
+        password = get_password_from_url(database_url)
+        if password:
+            env['PGPASSWORD'] = password
     except SystemExit:
         pass  # .env doesn't exist yet during initial install
     return env
@@ -86,6 +83,12 @@ def check_postgres_running():
 def start_postgres():
     """Start PostgreSQL server."""
     print('[INFO] Starting PostgreSQL...', flush=True)
+
+    # Validate DATA_DIR exists before attempting to start
+    if not DATA_DIR.exists():
+        print_error('data_dir_corrupt',
+                   'PostgreSQL data directory not found. Run install again.')
+        return False
 
     # Check if already running
     if check_postgres_running():
