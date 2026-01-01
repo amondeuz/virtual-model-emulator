@@ -55,6 +55,22 @@ def is_port_in_use(port, retries=3):
     return True
 
 
+def find_open_port(start_port=5432, max_attempts=10):
+    """Find an open port starting from start_port.
+
+    Args:
+        start_port: Port to start checking from
+        max_attempts: Maximum ports to check
+
+    Returns:
+        int: First open port found, or None if none available
+    """
+    for port in range(start_port, start_port + max_attempts):
+        if not is_port_in_use(port):
+            return port
+    return None
+
+
 class PostgreSQLManager:
     """Manages PostgreSQL server lifecycle."""
 
@@ -150,10 +166,16 @@ class PostgreSQLManager:
             print('[OK] PostgreSQL already running', flush=True)
             return True
 
-        # Check if port is available
+        # Check if port is available, try to find open port if needed
         if is_port_in_use(self.port):
-            print_error('port_in_use')
-            return False
+            print(f'[WARN] Port {self.port} already in use', flush=True)
+            open_port = find_open_port(self.port, max_attempts=10)
+            if open_port:
+                print(f'[INFO] Using port {open_port} instead', flush=True)
+                self.port = open_port
+            else:
+                print_error('port_in_use')
+                return False
 
         # Start server
         try:

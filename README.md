@@ -354,6 +354,24 @@ The LiteLLM proxy exposes these endpoints:
 - Check that the provider supports the selected model
 - Try the model in the provider's own interface first
 
+## Environment Variables
+
+Override these settings if needed:
+
+**PostgreSQL Port:**
+```bash
+# Default: 5432, automatically finds next available if in use
+export PG_PORT=5433
+```
+
+**Master Key:**
+```bash
+# Override the auto-generated master key (must start with 'sk-')
+export LITELLM_MASTER_KEY=sk-your-custom-key-here
+```
+
+The app automatically handles port conflicts by scanning for available ports starting from 5432.
+
 ## Resources
 
 - [LiteLLM Documentation](https://docs.litellm.ai/)
