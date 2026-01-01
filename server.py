@@ -10,6 +10,7 @@ import threading
 import urllib.request
 import urllib.parse
 import urllib.error
+import uuid
 from pathlib import Path
 
 PORT = 8765
@@ -141,7 +142,11 @@ def get_active_emulations(model_info):
     return [m for m in model_info["data"] if not is_wildcard_model(m.get("model_name", ""))]
 
 def has_any_api_keys():
-    """Check if ANY provider has an API key configured (accounts or env vars)."""
+    """Check if ANY provider has an API key configured (accounts or env vars).
+
+    Note: This checks system-wide availability, not a specific provider.
+    Use get_accounts_for_provider() to check a specific provider.
+    """
     accounts = load_accounts()
     if len(accounts) > 0:
         return True
@@ -275,8 +280,9 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
             active_emulations = get_active_emulations(model_info)
             emulator_active = len(active_emulations) > 0
 
-            # Provider is only "online" if LiteLLM is running AND we have API keys
-            provider_online = litellm_alive and has_any_api_keys()
+            # System is "online" if LiteLLM is running AND at least one provider has API keys
+            # Note: This indicates system readiness, not a specific provider's status
+            any_provider_available = litellm_alive and has_any_api_keys()
 
             self.send_json({
                 "accounts": safe_accounts,
@@ -285,7 +291,7 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
                 "presets": [],
                 "config": {},
                 "emulatorActive": emulator_active,
-                "providerOnline": provider_online
+                "providerOnline": any_provider_available  # True if any provider is configured
             })
 
         elif path == "/emulator/status":
@@ -295,12 +301,13 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
             model_info = litellm_request("/model/info")
             active_emulations = get_active_emulations(model_info)
 
-            # Provider is only "online" if LiteLLM is running AND we have API keys
-            provider_online = litellm_alive and has_any_api_keys()
+            # System is "online" if LiteLLM is running AND at least one provider has API keys
+            # Note: This indicates system readiness, not a specific provider's status
+            any_provider_available = litellm_alive and has_any_api_keys()
 
             self.send_json({
                 "emulatorRunning": len(active_emulations) > 0,
-                "providerOnline": provider_online,
+                "providerOnline": any_provider_available,  # True if any provider is configured
                 "currentConfig": {
                     "emulatedModelName": active_emulations[0]["model_name"] if active_emulations else "",
                     "providerName": ""
@@ -416,20 +423,31 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
             provider_accounts = get_accounts_for_provider(provider)
             is_first_account = len(provider_accounts) == 0
 
-            # Add wildcard route FIRST (before saving account)
-            if is_first_account:
-                result = add_wildcard_to_database(provider, api_key)
-                if "error" in result:
-                    self.send_json({"success": False, "error": result.get("error")}, 500)
-                    return  # Safe - nothing was saved yet
-
-            # Only save account after wildcard succeeded (or wasn't needed)
-            accounts.append({
+            # Save account FIRST (file operation - can rollback if API fails)
+            new_account = {
                 "provider": provider,
                 "accountName": account_name,
                 "apiKey": api_key
-            })
-            save_accounts(accounts)
+            }
+            accounts.append(new_account)
+            try:
+                save_accounts(accounts)
+            except Exception as e:
+                self.send_json({"success": False, "error": f"Failed to save account: {e}"}, 500)
+                return
+
+            # Add wildcard route AFTER save succeeds (rollback on failure)
+            if is_first_account:
+                result = add_wildcard_to_database(provider, api_key)
+                if "error" in result:
+                    # Rollback: remove the account we just saved
+                    accounts = [a for a in accounts if not (a["provider"] == provider and a["accountName"] == account_name)]
+                    try:
+                        save_accounts(accounts)
+                    except Exception:
+                        pass  # Best effort rollback
+                    self.send_json({"success": False, "error": result.get("error")}, 500)
+                    return
 
             self.send_json({"success": True})
 
@@ -567,9 +585,16 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
                 if model_name != actual_model:
                     model_id = model_info.get("id")
 
-                    # Validate model_id format
+                    # Validate model_id format (must be non-empty string, typically UUID)
                     if not model_id or not isinstance(model_id, str) or len(model_id.strip()) == 0:
                         print(f"[WARN] Skipping invalid model_id for {model_name}: {model_id}", flush=True)
+                        continue
+
+                    # Validate UUID format (LiteLLM uses UUIDs for database IDs)
+                    try:
+                        uuid.UUID(model_id)
+                    except ValueError:
+                        print(f"[WARN] Skipping non-UUID model_id for {model_name}: {model_id}", flush=True)
                         continue
 
                     # Delete this emulation
