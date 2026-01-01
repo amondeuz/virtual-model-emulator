@@ -662,7 +662,36 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
         else:
             self.send_json({"error": "Not found"}, 404)
 
+def check_litellm_health(max_retries=3, retry_delay=2):
+    """Check if LiteLLM is running and healthy.
+
+    Args:
+        max_retries: Number of retry attempts
+        retry_delay: Seconds to wait between retries
+
+    Returns:
+        bool: True if LiteLLM is healthy
+    """
+    import time
+    for attempt in range(max_retries):
+        health = litellm_request("/health")
+        if "error" not in health:
+            return True
+        if attempt < max_retries - 1:
+            print(f"[WARN] LiteLLM not ready (attempt {attempt + 1}/{max_retries}), retrying...", flush=True)
+            time.sleep(retry_delay)
+    return False
+
+
 def main():
+    # Check LiteLLM health before starting server
+    print("[INFO] Checking LiteLLM status...", flush=True)
+    if not check_litellm_health():
+        print("[WARN] LiteLLM is not responding. API calls may fail.", flush=True)
+        print("[WARN] Make sure LiteLLM is running (check start.js logs).", flush=True)
+    else:
+        print("[OK] LiteLLM is running", flush=True)
+
     with socketserver.TCPServer(("127.0.0.1", PORT), APIHandler) as httpd:
         print(f"http://localhost:{PORT}/config.html", flush=True)
         httpd.serve_forever()

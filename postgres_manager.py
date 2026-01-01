@@ -130,7 +130,9 @@ class PostgreSQLManager:
                 print(f'[INFO] Using port {open_port} instead', flush=True)
                 self.port = open_port
             else:
-                print_error('port_in_use')
+                print('[ERROR] All PostgreSQL ports (5432-5441) are in use!', flush=True)
+                print('[ERROR] Close other PostgreSQL instances or database applications.', flush=True)
+                print('[ERROR] Or set PG_PORT environment variable to a specific free port.', flush=True)
                 return False
 
         # Start server
