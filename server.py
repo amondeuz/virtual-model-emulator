@@ -586,14 +586,6 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
                 "emulations": emulations
             })
 
-        elif path == "/config/save":
-            # Just acknowledge - config is applied on start
-            self.send_json({"success": True})
-
-        elif path == "/config/savePreset":
-            # Presets not implemented yet
-            self.send_json({"success": False, "error": "Presets not implemented"}, 501)
-
         else:
             self.send_json({"error": "Not found"}, 404)
 

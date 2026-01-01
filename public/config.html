@@ -55,16 +55,6 @@
       <p class="muted">Model name emulator powered by LiteLLM. Route any model name to any provider.</p>
     </header>
 
-    <div class="section">
-      <label>Saved Configuration <span class="muted" style="font-weight:400">Load or save presets</span></label>
-      <div class="row">
-        <select id="preset-select">
-          <option value="">-- No preset selected --</option>
-        </select>
-        <button id="preset-action" class="secondary">Save</button>
-      </div>
-    </div>
-
     <!-- Step 1: Account -->
     <div class="section">
       <label><span class="step-number">1</span> Account <span class="muted" style="font-weight:400">Which credential to use</span></label>
@@ -157,8 +147,6 @@
   </div>
 
   <script>
-    var presetSelect = document.getElementById('preset-select');
-    var presetActionBtn = document.getElementById('preset-action');
     var accountSelect = document.getElementById('account-select');
     var providerSelect = document.getElementById('provider-select');
     var testConnectionBtn = document.getElementById('test-connection');
@@ -175,7 +163,6 @@
     var refreshHealthBtn = document.getElementById('refresh-health');
     var statusMessage = document.getElementById('status-message');
 
-    var presets = [];
     var providers = [];
     var models = [];
     var accounts = [];
@@ -411,70 +398,11 @@
       return { refreshOptions: refreshOptions, closeMenu: closeMenu };
     }
 
-    function populatePresets(selectedId) {
-      presetSelect.innerHTML = '<option value="">-- No preset selected --</option>';
-      presets.forEach(function(preset) {
-        var opt = document.createElement('option');
-        opt.value = preset.id;
-        opt.textContent = preset.name;
-        presetSelect.appendChild(opt);
-      });
-
-      if (selectedId) {
-        presetSelect.value = selectedId;
-      }
-
-      presetActionBtn.textContent = presetSelect.value ? 'Edit' : 'Save';
-    }
-
-    function applyPreset(presetId) {
-      var preset = presets.find(function(p) { return p.id === presetId; });
-      if (!preset) return;
-
-      // Set account if available
-      if (preset.account && preset.provider) {
-        accountSelect.value = preset.account + '|' + preset.provider;
-      } else if (preset.provider) {
-        accountSelect.value = '|' + preset.provider;
-      }
-
-      // Trigger account change to filter providers
-      populateProviders();
-
-      providerSelect.value = preset.provider || '';
-      modelSelect.value = preset.model || '';
-      setEmulatedModelName(preset.emulatedModelName || '');
-
-      modelDropdown.refreshOptions();
-      presetActionBtn.textContent = 'Edit';
-      setMessage('Loaded preset "' + preset.name + '"');
-    }
-
     function fetchState(force) {
       var url = '/config/state' + (force ? '?force=true' : '');
       return fetch(url).then(function(res) {
         if (!res.ok) throw new Error('Failed to load state');
         return res.json();
-      });
-    }
-
-    function saveConfig() {
-      var accountValue = accountSelect.value;
-      var parts = accountValue.split('|');
-      var accountName = parts[0] || '';
-      var providerId = parts[1] || providerSelect.value;
-
-      var body = {
-        account: accountName,
-        provider: providerId,
-        model: modelSelect.value,
-        emulatedModelName: getEmulatedModelName(),
-        apiKeyEnvVar: ''  // Will be resolved by get_api_key
-      };
-      return fetch('/config/save', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
       });
     }
 
@@ -528,20 +456,17 @@
           startStopBtn.textContent = 'Start';
           return;
         }
-        saveConfig()
-          .then(function() {
-            return fetch('/emulator/start', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                account: accountName,
-                provider: provider,
-                model: model,
-                emulatedModelName: emulatedModelName,
-                apiKeyEnvVar: ''
-              })
-            });
+        fetch('/emulator/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            account: accountName,
+            provider: provider,
+            model: model,
+            emulatedModelName: emulatedModelName,
+            apiKeyEnvVar: ''
           })
+        })
           .then(function(res) { return res.json(); })
           .then(function(data) {
             if (data.success) {
@@ -647,61 +572,15 @@
         });
     }
 
-    function savePreset(existingId) {
-      var name = prompt(existingId ? 'Rename preset' : 'Preset name');
-      if (!name) return;
-
-      var accountValue = accountSelect.value;
-      var parts = accountValue.split('|');
-      var accountName = parts[0] || '';
-
-      var body = {
-        id: existingId || undefined,
-        name: name.trim(),
-        account: accountName,
-        provider: providerSelect.value,
-        model: modelSelect.value,
-        emulatedModelName: getEmulatedModelName(),
-        apiKeyEnvVar: ''
-      };
-
-      fetch('/config/savePreset', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      })
-        .then(function(res) { return res.json(); })
-        .then(function(data) {
-          if (data.success) {
-            if (existingId) {
-              presets = presets.map(function(p) { return p.id === existingId ? data.preset : p; });
-              populatePresets(existingId);
-              setMessage('Preset updated.');
-            } else {
-              presets.push(data.preset);
-              populatePresets(data.preset.id);
-              setMessage('Preset saved.');
-            }
-          } else {
-            showError(data.error || 'Failed to save preset.');
-          }
-        })
-        .catch(function(err) {
-          showError('Failed to save preset: ' + err.message);
-        });
-    }
-
     function init() {
       fetchState(false)
         .then(function(state) {
-          presets = state.presets || [];
           providers = state.providers || [];
           models = state.models || [];
           accounts = state.accounts || [];
 
           populateAccounts();
           populateProviders();
-          populatePresets();
 
           if (state.config) {
             // Set account selection
@@ -748,21 +627,6 @@
     });
 
     // Event listeners
-    presetSelect.addEventListener('change', function() {
-      if (presetSelect.value) {
-        applyPreset(presetSelect.value);
-      }
-      presetActionBtn.textContent = presetSelect.value ? 'Edit' : 'Save';
-    });
-
-    presetActionBtn.addEventListener('click', function() {
-      if (presetSelect.value) {
-        savePreset(presetSelect.value);
-      } else {
-        savePreset();
-      }
-    });
-
     accountSelect.addEventListener('change', function() {
       // When account changes, update provider dropdown
       populateProviders();
