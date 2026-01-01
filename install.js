@@ -39,9 +39,15 @@ import shutil
 
 postgres_version = '16.1-1'
 postgres_url = f'https://get.enterprisedb.com/postgresql/postgresql-{postgres_version}-windows-x64-binaries.zip'
-# SHA256 checksum for PostgreSQL 16.1-1 Windows x64 binaries (security hardening)
+# build the checksum URL
 sha_url = postgres_url + '.sha256'
-with urllib.request.urlopen(sha_url) as resp:
+
+# create a request object with a friendly User-Agent
+req = urllib.request.Request(sha_url,
+    headers={'User-Agent': 'Mozilla/5.0'})
+
+# fetch the hash
+with urllib.request.urlopen(req) as resp:
     postgres_sha256 = resp.read().decode().strip().split()[0]
 postgres_zip = 'postgres.zip'
 postgres_dir = 'postgres'
