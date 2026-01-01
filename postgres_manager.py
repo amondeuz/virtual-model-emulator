@@ -286,6 +286,12 @@ class PostgreSQLManager:
             elif 'already exists' in result.stderr:
                 print(f'[OK] Database {dbname} exists', flush=True)
                 return True
+            elif 'password authentication failed' in result.stderr.lower() or \
+                 'permission denied' in result.stderr.lower():
+                print('[ERROR] Database password mismatch!', flush=True)
+                print('[ERROR] PostgreSQL was initialized with a different password.', flush=True)
+                print('[ERROR] To fix: Delete postgres/ directory and .env file, then run install again.', flush=True)
+                return False
             else:
                 print(f'[WARN] createdb: {result.stderr}', flush=True)
                 return False
