@@ -66,3 +66,7 @@ litellm.db
 # PostgreSQL
 postgres/
 postgres_pwd.tmp
+
+# API keys and secrets (CRITICAL: never commit these!)
+config/accounts.json
+config/.secret
