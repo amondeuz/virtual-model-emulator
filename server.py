@@ -567,18 +567,25 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
                 if model_name != actual_model:
                     model_id = model_info.get("id")
 
-                    if model_id:
-                        # Delete this emulation
-                        result = litellm_request("/model/delete", method="POST",
-                                               data={"id": model_id})
+                    # Validate model_id format
+                    if not model_id or not isinstance(model_id, str) or len(model_id.strip()) == 0:
+                        print(f"[WARN] Skipping invalid model_id for {model_name}: {model_id}", flush=True)
+                        continue
 
-                        if "error" not in result:
-                            deleted_count += 1
-                            emulations.append({
-                                "emulatedName": model_name,
-                                "actualModel": actual_model
-                            })
-                            print(f"[INFO] Stopped emulation: {model_name} → {actual_model}")
+                    # Delete this emulation
+                    result = litellm_request("/model/delete", method="POST",
+                                           data={"id": model_id})
+
+                    if "error" in result:
+                        print(f"[WARN] Failed to delete model {model_id}: {result.get('error')}", flush=True)
+                        continue
+
+                    deleted_count += 1
+                    emulations.append({
+                        "emulatedName": model_name,
+                        "actualModel": actual_model
+                    })
+                    print(f"[INFO] Stopped emulation: {model_name} → {actual_model}")
 
             self.send_json({
                 "success": True,

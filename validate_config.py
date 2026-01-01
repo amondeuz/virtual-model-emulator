@@ -1,5 +1,6 @@
 """Validate environment before starting services."""
 import sys
+from pathlib import Path
 
 from postgres_config import DATA_DIR, BIN_DIR, PG_CTL
 from env_loader import get_database_url, load_env
@@ -45,6 +46,32 @@ def validate_environment():
         errors.append((
             f'Environment validation failed: {e}',
             'Check .env file format or run install again'
+        ))
+
+    # Check master key format in config.yaml
+    try:
+        config_file = Path(__file__).parent / 'config.yaml'
+        if config_file.exists():
+            with open(config_file, 'r') as f:
+                content = f.read()
+                for line in content.split('\n'):
+                    if 'master_key:' in line:
+                        master_key = line.split('master_key:')[1].strip()
+                        if not master_key.startswith('sk-'):
+                            errors.append((
+                                f'Invalid master_key in config.yaml: must start with "sk-"',
+                                'Edit config.yaml to fix the master_key format'
+                            ))
+                        elif len(master_key) < 20:
+                            errors.append((
+                                f'master_key too short ({len(master_key)} chars, minimum 20)',
+                                'Edit config.yaml to use a longer master_key'
+                            ))
+                        break
+    except Exception as e:
+        errors.append((
+            f'Failed to validate master key: {e}',
+            'Check config.yaml file format'
         ))
 
     return errors
