@@ -62,14 +62,17 @@ def wait_for_postgres(timeout=30):
         bool: True if PostgreSQL is accepting connections
     """
     start_time = time.time()
+    # Resolve path once for Windows compatibility (handles spaces in paths)
+    pg_isready_path = str(PG_ISREADY.resolve())
 
     while time.time() - start_time < timeout:
         try:
             result = subprocess.run([
-                str(PG_ISREADY),
+                pg_isready_path,
                 '-h', PG_HOST,
                 '-p', str(PG_PORT),
-                '-U', PG_USER
+                '-U', PG_USER,
+                '-t', '3'  # pg_isready's internal timeout (seconds)
             ], capture_output=True, text=True, timeout=5)
 
             if result.returncode == 0:
@@ -103,8 +106,9 @@ def get_pg_env():
 def check_postgres_running():
     """Check if PostgreSQL is already running."""
     try:
+        # Resolve paths for Windows compatibility (handles spaces in paths)
         result = subprocess.run(
-            [str(PG_CTL), 'status', '-D', str(DATA_DIR)],
+            [str(PG_CTL.resolve()), 'status', '-D', str(DATA_DIR.resolve())],
             capture_output=True,
             text=True,
             timeout=5
@@ -137,12 +141,13 @@ def start_postgres():
     # Start PostgreSQL with -w flag to wait for startup
     try:
         print('[INFO] Starting PostgreSQL server...', flush=True)
+        # Resolve all paths for Windows compatibility (handles spaces in paths)
         result = subprocess.run([
-            str(PG_CTL), 'start',
+            str(PG_CTL.resolve()), 'start',
             '-w',  # Wait for startup to complete
             '-t', '30',  # Timeout after 30 seconds
-            '-D', str(DATA_DIR),
-            '-l', str(LOG_FILE),
+            '-D', str(DATA_DIR.resolve()),
+            '-l', str(LOG_FILE.resolve()),
             '-o', f'-p {PG_PORT}'
         ], capture_output=True, text=True, timeout=35)
 
@@ -173,8 +178,9 @@ def create_database():
     """Create litellm database if it doesn't exist."""
     try:
         print('[INFO] Creating litellm database...', flush=True)
+        # Resolve path for Windows compatibility (handles spaces in paths)
         result = subprocess.run(
-            [str(CREATEDB), '-U', PG_USER, PG_DATABASE],
+            [str(CREATEDB.resolve()), '-U', PG_USER, PG_DATABASE],
             capture_output=True,
             text=True,
             timeout=10,
