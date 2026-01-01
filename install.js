@@ -63,7 +63,18 @@ if not postgres_exists and env_exists:
 
 if not os.path.exists(postgres_dir):
     print(f'Downloading PostgreSQL {postgres_version}...')
-    urllib.request.urlretrieve(postgres_url, postgres_zip)
+    try:
+        urllib.request.urlretrieve(postgres_url, postgres_zip)
+    except OSError as e:
+        if 'No space left' in str(e) or 'disk full' in str(e).lower():
+            print('[ERROR] Disk full! Cannot download PostgreSQL.')
+            print('[ERROR] Free up disk space and run install again.')
+        else:
+            print(f'[ERROR] Failed to download PostgreSQL: {e}')
+        sys.exit(1)
+    except Exception as e:
+        print(f'[ERROR] Failed to download PostgreSQL: {e}')
+        sys.exit(1)
 
     # Verify SHA256 checksum for security
     print('Verifying PostgreSQL checksum...')
@@ -82,9 +93,25 @@ if not os.path.exists(postgres_dir):
     print('[OK] Checksum verified.')
 
     print('Extracting PostgreSQL...')
-    with zipfile.ZipFile(postgres_zip, 'r') as zip_ref:
-        zip_ref.extractall('.')
-    os.remove(postgres_zip)
+    try:
+        with zipfile.ZipFile(postgres_zip, 'r') as zip_ref:
+            zip_ref.extractall('.')
+        os.remove(postgres_zip)
+    except OSError as e:
+        if 'No space left' in str(e) or 'disk full' in str(e).lower():
+            print('[ERROR] Disk full! Cannot extract PostgreSQL.')
+            print('[ERROR] Free up disk space and run install again.')
+        else:
+            print(f'[ERROR] Failed to extract PostgreSQL: {e}')
+        # Clean up partial download
+        if os.path.exists(postgres_zip):
+            os.remove(postgres_zip)
+        sys.exit(1)
+    except Exception as e:
+        print(f'[ERROR] Failed to extract PostgreSQL: {e}')
+        if os.path.exists(postgres_zip):
+            os.remove(postgres_zip)
+        sys.exit(1)
 
     # Rename extracted folder
     extracted = 'pgsql'
