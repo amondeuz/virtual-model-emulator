@@ -96,7 +96,7 @@ if not os.path.exists(env_file):
     # Use password from initialization, or generate new one if PostgreSQL was already installed
     db_password = os.environ.get('PG_PASSWORD', secrets.token_urlsafe(16))
     env_content = f'''# Database Configuration
-DATABASE_URL=postgresql://postgres:{db_password}@localhost:5432/litellm?schema=public&connection_limit=10&pool_timeout=30
+DATABASE_URL=postgresql://postgres:{db_password}@localhost:5432/litellm?schema=public&connection_limit=10&pool_timeout=30&connect_timeout=10
 
 # LiteLLM Configuration
 LITELLM_MASTER_KEY=sk-{secrets.token_hex(16)}

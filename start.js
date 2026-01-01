@@ -1,7 +1,16 @@
 module.exports = {
   daemon: true,
   run: [
-    // Step 1: Start PostgreSQL
+    // Step 1: Validate configuration
+    {
+      method: "shell.run",
+      params: {
+        venv: "env",
+        message: "python validate_config.py",
+        on: [{ event: "/Environment validated/", done: true }]
+      }
+    },
+    // Step 2: Start PostgreSQL
     {
       method: "shell.run",
       params: {
@@ -10,7 +19,7 @@ module.exports = {
         on: [{ event: "/PostgreSQL ready/", done: true }]
       }
     },
-    // Step 2: Start LiteLLM with DATABASE_URL loaded
+    // Step 3: Start LiteLLM with DATABASE_URL loaded
     {
       method: "shell.run",
       params: {
@@ -19,7 +28,7 @@ module.exports = {
         on: [{ event: "/Uvicorn running/", done: true }]
       }
     },
-    // Step 3: Start Flask server
+    // Step 4: Start Flask server
     {
       method: "shell.run",
       params: {
