@@ -48,20 +48,43 @@ def load_env(env_file='.env'):
 
 
 def get_database_url(env_vars=None):
-    """Get DATABASE_URL from environment.
+    """Get and validate DATABASE_URL from environment.
+
+    Validates the URL format to catch configuration errors early
+    with clear error messages.
 
     Args:
         env_vars: Dictionary of environment variables (optional)
 
     Returns:
-        str: The DATABASE_URL value
+        str: The validated DATABASE_URL value
     """
     if env_vars is None:
         env_vars = os.environ
 
     database_url = env_vars.get('DATABASE_URL')
     if not database_url:
-        print('[ERROR] DATABASE_URL not found', flush=True)
+        print('[ERROR] DATABASE_URL not found in environment', flush=True)
+        sys.exit(1)
+
+    # Validate format
+    try:
+        parsed = urlparse(database_url)
+
+        if parsed.scheme not in ('postgresql', 'postgres'):
+            print(f'[ERROR] DATABASE_URL must use postgresql:// scheme, got: {parsed.scheme}', flush=True)
+            sys.exit(1)
+
+        if not parsed.hostname:
+            print('[ERROR] DATABASE_URL missing hostname', flush=True)
+            sys.exit(1)
+
+        if not parsed.path or parsed.path == '/':
+            print('[ERROR] DATABASE_URL missing database name', flush=True)
+            sys.exit(1)
+
+    except Exception as e:
+        print(f'[ERROR] Invalid DATABASE_URL format: {e}', flush=True)
         sys.exit(1)
 
     return database_url

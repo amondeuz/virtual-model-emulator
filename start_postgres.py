@@ -6,20 +6,54 @@ import time
 import sys
 
 from postgres_config import (
-    PG_CTL, PSQL, CREATEDB, DATA_DIR, LOG_FILE,
-    PG_PORT, PG_USER, PG_DATABASE, print_error
+    PG_CTL, PSQL, CREATEDB, PG_ISREADY, DATA_DIR, LOG_FILE,
+    PG_PORT, PG_USER, PG_HOST, PG_DATABASE, print_error
 )
 from env_loader import load_env, get_password_from_url
 
 
-def is_port_in_use(port):
-    """Check if a port is already in use."""
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        return s.connect_ex(('localhost', port)) == 0
+def is_port_in_use(port, retries=3):
+    """Check if a port is already in use (Windows-compatible with retries).
+
+    Args:
+        port: Port number to check
+        retries: Number of retry attempts for uncertain results
+
+    Returns:
+        bool: True if port is in use, False otherwise
+    """
+    for attempt in range(retries):
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(1.0)
+                result = s.connect_ex(('localhost', port))
+
+                if result == 0:
+                    # Port is definitely in use
+                    return True
+                elif result == 10061:  # Windows WSAECONNREFUSED
+                    # Port is definitely NOT in use
+                    return False
+                elif result == 111:  # Linux ECONNREFUSED
+                    # Port is definitely NOT in use
+                    return False
+                # Other errors - retry
+
+        except socket.error:
+            pass
+
+        if attempt < retries - 1:
+            time.sleep(0.2)
+
+    # If uncertain after retries, assume port is free
+    return False
 
 
 def wait_for_postgres(timeout=30):
-    """Wait for PostgreSQL to accept connections.
+    """Wait for PostgreSQL to accept connections using pg_isready.
+
+    Uses the official pg_isready tool which is more reliable and faster
+    than attempting psql connections, especially on Windows.
 
     Args:
         timeout: Maximum seconds to wait
@@ -31,20 +65,20 @@ def wait_for_postgres(timeout=30):
 
     while time.time() - start_time < timeout:
         try:
-            result = subprocess.run(
-                [str(PSQL), '-U', PG_USER, '-d', 'postgres', '-c', 'SELECT 1'],
-                capture_output=True,
-                text=True,
-                timeout=5,
-                env=get_pg_env()
-            )
+            result = subprocess.run([
+                str(PG_ISREADY),
+                '-h', PG_HOST,
+                '-p', str(PG_PORT),
+                '-U', PG_USER
+            ], capture_output=True, text=True, timeout=5)
+
             if result.returncode == 0:
                 return True
         except subprocess.TimeoutExpired:
             pass
         except Exception:
             pass
-        time.sleep(1)
+        time.sleep(0.5)
 
     return False
 
