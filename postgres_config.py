@@ -2,6 +2,7 @@
 import os
 import socket
 import sys
+import time
 from pathlib import Path
 
 BASE_DIR = Path(__file__).parent
@@ -19,20 +20,55 @@ PSQL = BIN_DIR / f'psql{EXE_EXT}'
 PG_ISREADY = BIN_DIR / f'pg_isready{EXE_EXT}'
 
 
+def is_port_in_use(port, retries=3):
+    """Check if a port is in use (Windows-compatible with retries).
+
+    Args:
+        port: Port number to check
+        retries: Number of retry attempts for uncertain results
+
+    Returns:
+        bool: True if port is in use or uncertain, False only if definitely free
+    """
+    for attempt in range(retries):
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(1.0)
+                result = s.connect_ex(('localhost', port))
+
+                # Definitive answers - return immediately
+                if result == 0:
+                    return True  # Port is in use
+
+                # Connection refused - port is free (platform-specific codes)
+                # Windows: WSAECONNREFUSED = 10061
+                # Linux: ECONNREFUSED = 111
+                # macOS: ECONNREFUSED = 61
+                if sys.platform == 'win32' and result == 10061:
+                    return False
+                if sys.platform != 'win32' and result in (111, 61):
+                    return False
+
+                # Uncertain result - will retry
+
+        except socket.error:
+            # Socket error - will retry
+            pass
+
+        if attempt < retries - 1:
+            time.sleep(0.2)
+
+    # After all retries with uncertain result, assume port IS in use (fail closed for safety)
+    return True
+
+
 def _is_port_free(port):
-    """Quick check if port is free without retries."""
-    try:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.settimeout(0.5)
-            result = s.connect_ex(('localhost', port))
-            # Connection refused means port is free
-            if sys.platform == 'win32' and result == 10061:
-                return True
-            if sys.platform != 'win32' and result in (111, 61):
-                return True
-            return result != 0  # Non-zero and not refused = likely free
-    except socket.error:
-        return True  # Error = assume free
+    """Check if port is free (convenience wrapper).
+
+    Returns:
+        bool: True if port is free, False if in use
+    """
+    return not is_port_in_use(port, retries=1)
 
 
 def _get_pg_port():

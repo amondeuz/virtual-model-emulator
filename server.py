@@ -43,11 +43,11 @@ def get_master_key():
 
     # Validate master key format
     if not master_key.startswith('sk-'):
-        print(f"[WARNING] Master key must start with 'sk-'. Current key: {master_key[:10]}...")
-        print("[WARNING] LiteLLM may reject this key. Edit config.yaml to fix.")
+        print(f"[WARNING] Master key must start with 'sk-'. Current key: {master_key[:10]}...", flush=True)
+        print("[WARNING] LiteLLM may reject this key. Edit config.yaml to fix.", flush=True)
 
     if len(master_key) < 32:
-        print(f"[WARNING] Master key should be at least 32 characters. Current length: {len(master_key)}")
+        print(f"[WARNING] Master key should be at least 32 characters. Current length: {len(master_key)}", flush=True)
 
     return master_key
 
@@ -89,7 +89,7 @@ def add_wildcard_to_database(provider_id, api_key):
             for model_data in models_info.get("data", []):
                 model_name = model_data.get("model_info", {}).get("model_name", "")
                 if model_name == f"{provider_id}/*":
-                    print(f"[INFO] Wildcard route {provider_id}/* already exists in database")
+                    print(f"[INFO] Wildcard route {provider_id}/* already exists in database", flush=True)
                     return {"success": True, "message": "Already exists"}
 
         model_data = {
@@ -101,9 +101,9 @@ def add_wildcard_to_database(provider_id, api_key):
         }
         result = litellm_request("/model/new", method="POST", data=model_data)
         if "error" not in result:
-            print(f"[INFO] Added wildcard route {provider_id}/* to database")
+            print(f"[INFO] Added wildcard route {provider_id}/* to database", flush=True)
         else:
-            print(f"[WARNING] Failed to add wildcard route {provider_id}/*: {result.get('error')}")
+            print(f"[WARNING] Failed to add wildcard route {provider_id}/*: {result.get('error')}", flush=True)
         return result
 
 def remove_wildcard_from_database(provider_id):
@@ -112,7 +112,7 @@ def remove_wildcard_from_database(provider_id):
     models_info = litellm_request("/model/info")
 
     if "error" in models_info:
-        print(f"[WARNING] Failed to get model info: {models_info.get('error')}")
+        print(f"[WARNING] Failed to get model info: {models_info.get('error')}", flush=True)
         return False
 
     # Find and delete the wildcard route for this provider
@@ -125,10 +125,10 @@ def remove_wildcard_from_database(provider_id):
             if model_id:
                 result = litellm_request("/model/delete", method="POST", data={"id": model_id})
                 if "error" not in result:
-                    print(f"[INFO] Removed wildcard route {provider_id}/* from database")
+                    print(f"[INFO] Removed wildcard route {provider_id}/* from database", flush=True)
                     return True
                 else:
-                    print(f"[WARNING] Failed to remove wildcard route: {result.get('error')}")
+                    print(f"[WARNING] Failed to remove wildcard route: {result.get('error')}", flush=True)
     return False
 
 def is_wildcard_model(model_name):
@@ -140,6 +140,48 @@ def get_active_emulations(model_info):
     if "data" not in model_info:
         return []
     return [m for m in model_info["data"] if not is_wildcard_model(m.get("model_name", ""))]
+
+def get_provider_by_id(provider_id):
+    """Get provider info by ID.
+
+    Args:
+        provider_id: The provider ID (e.g., 'groq', 'gemini')
+
+    Returns:
+        dict: Provider info dict or None if not found
+    """
+    if not provider_id or not isinstance(provider_id, str):
+        return None
+    return next((p for p in PROVIDERS if p["id"] == provider_id), None)
+
+
+def find_api_key_for_provider(provider_id, account_name=None):
+    """Find API key for a provider from accounts or environment variables.
+
+    Args:
+        provider_id: The provider ID
+        account_name: Optional specific account name to use
+
+    Returns:
+        str: API key or None if not found
+    """
+    if not provider_id:
+        return None
+
+    # Check saved accounts first
+    accounts = load_accounts()
+    for acc in accounts:
+        if acc.get("provider") == provider_id:
+            if not account_name or acc.get("accountName") == account_name:
+                return acc.get("apiKey")
+
+    # Fall back to environment variable
+    prov = get_provider_by_id(provider_id)
+    if prov:
+        return os.environ.get(prov["envVar"])
+
+    return None
+
 
 def has_any_api_keys():
     """Check if ANY provider has an API key configured (accounts or env vars).
@@ -231,9 +273,20 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
         self.wfile.write(json.dumps(data).encode())
 
     def read_json_body(self):
-        content_length = int(self.headers.get('Content-Length', 0))
-        if content_length:
-            return json.loads(self.rfile.read(content_length).decode())
+        """Read and parse JSON body from request.
+
+        Returns:
+            dict: Parsed JSON data, or empty dict on error
+        """
+        try:
+            content_length = int(self.headers.get('Content-Length', 0))
+            if content_length:
+                raw_body = self.rfile.read(content_length)
+                return json.loads(raw_body.decode('utf-8'))
+        except (ValueError, UnicodeDecodeError, json.JSONDecodeError) as e:
+            print(f"[WARN] Failed to parse JSON body: {e}", flush=True)
+        except Exception as e:
+            print(f"[WARN] Unexpected error reading request body: {e}", flush=True)
         return {}
 
     def do_OPTIONS(self):
@@ -356,7 +409,7 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
                 return
 
             if "data" in result:
-                provider_info = next((p for p in PROVIDERS if p["id"] == provider), None) if provider else None
+                provider_info = get_provider_by_id(provider) if provider else None
                 prefix = provider_info["prefix"] if provider_info else ""
 
                 for m in result["data"]:
@@ -499,27 +552,15 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
                 self.send_json({"success": False, "error": "Emulated model name required (cannot be empty or whitespace)"}, 400)
                 return
 
-            # Find API key
-            accounts = load_accounts()
-            api_key = None
-            for acc in accounts:
-                if acc["provider"] == provider:
-                    if not account_name or acc["accountName"] == account_name:
-                        api_key = acc["apiKey"]
-                        break
-
-            # Fall back to env var
-            if not api_key:
-                prov = next((p for p in PROVIDERS if p["id"] == provider), None)
-                if prov:
-                    api_key = os.environ.get(prov["envVar"])
+            # Find API key using helper
+            api_key = find_api_key_for_provider(provider, account_name)
 
             if not api_key:
                 self.send_json({"success": False, "error": "No API key found for provider"}, 400)
                 return
 
             # Get provider prefix
-            prov = next((p for p in PROVIDERS if p["id"] == provider), None)
+            prov = get_provider_by_id(provider)
             prefix = prov["prefix"] if prov else ""
             full_model = f"{prefix}{model}"
 
@@ -543,7 +584,7 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
                 }, 500)
             else:
                 model_id = result.get("model_info", {}).get("id")
-                print(f"[INFO] Started emulation: {emulated_name} → {full_model}")
+                print(f"[INFO] Started emulation: {emulated_name} → {full_model}", flush=True)
                 self.send_json({
                     "success": True,
                     "modelId": model_id,
@@ -610,7 +651,7 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
                         "emulatedName": model_name,
                         "actualModel": actual_model
                     })
-                    print(f"[INFO] Stopped emulation: {model_name} → {actual_model}")
+                    print(f"[INFO] Stopped emulation: {model_name} → {actual_model}", flush=True)
 
             self.send_json({
                 "success": True,
@@ -623,7 +664,7 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
 
 def main():
     with socketserver.TCPServer(("127.0.0.1", PORT), APIHandler) as httpd:
-        print(f"http://localhost:{PORT}/config.html")
+        print(f"http://localhost:{PORT}/config.html", flush=True)
         httpd.serve_forever()
 
 if __name__ == "__main__":
