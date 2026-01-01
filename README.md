@@ -292,6 +292,24 @@ The `litellm` database contains:
 - **Master key** protects LiteLLM admin endpoints
 - **Nothing leaves your machine** except authorized API requests to providers
 
+### Local Storage Considerations
+
+**API Keys (`config/accounts.json`):**
+- Stored in plaintext JSON for simplicity
+- Protected by file system permissions (server-side only)
+- Never exposed to the browser or transmitted externally
+- Ensure your local file permissions restrict access to your user account
+
+**Master Key (`config.yaml`):**
+- Stored in plaintext YAML (file is gitignored)
+- Used only for local LiteLLM admin authentication
+- Acceptable for local development; for production, use environment variables
+
+**Recommendations:**
+- Do not share or commit `config/accounts.json`, `config.yaml`, or `.env` files
+- Use restrictive file permissions on your config directory
+- Rotate API keys if you suspect they may have been exposed
+
 ## LiteLLM Endpoints
 
 The LiteLLM proxy exposes these endpoints:
