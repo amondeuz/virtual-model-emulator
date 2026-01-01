@@ -69,7 +69,7 @@ if not os.path.exists(postgres_dir):
         f.write(db_password)
 
     try:
-        run_command(f'"{initdb}" -D "{data_dir}" -U postgres -A md5 --pwfile="{password_file}"', 'Initializing database with password authentication')
+        run_command(f'"{initdb}" -D "{data_dir}" -U postgres -A scram-sha-256 --pwfile="{password_file}"', 'Initializing database with scram-sha-256 authentication')
     finally:
         # Clean up password file with verification
         try:
@@ -96,7 +96,7 @@ if not os.path.exists(env_file):
     # Use password from initialization, or generate new one if PostgreSQL was already installed
     db_password = os.environ.get('PG_PASSWORD', secrets.token_urlsafe(16))
     env_content = f'''# Database Configuration
-DATABASE_URL=postgresql://postgres:{db_password}@localhost:5432/litellm
+DATABASE_URL=postgresql://postgres:{db_password}@localhost:5432/litellm?schema=public&connection_limit=10&pool_timeout=30
 
 # LiteLLM Configuration
 LITELLM_MASTER_KEY=sk-{secrets.token_hex(16)}

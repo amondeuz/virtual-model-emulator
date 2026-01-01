@@ -15,6 +15,7 @@ PG_CTL = BIN_DIR / f'pg_ctl{EXE_EXT}'
 INITDB = BIN_DIR / f'initdb{EXE_EXT}'
 CREATEDB = BIN_DIR / f'createdb{EXE_EXT}'
 PSQL = BIN_DIR / f'psql{EXE_EXT}'
+PG_ISREADY = BIN_DIR / f'pg_isready{EXE_EXT}'
 
 # Connection settings
 PG_PORT = 5432
