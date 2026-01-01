@@ -48,9 +48,16 @@ def validate_environment():
             'Check .env file format or run install again'
         ))
 
+    # Check config.yaml exists
+    config_file = Path(__file__).parent / 'config.yaml'
+    if not config_file.exists():
+        errors.append((
+            'config.yaml missing',
+            'Run install again to regenerate config.yaml'
+        ))
+
     # Check master key format in config.yaml
     try:
-        config_file = Path(__file__).parent / 'config.yaml'
         if config_file.exists():
             with open(config_file, 'r') as f:
                 content = f.read()
