@@ -1,4 +1,4 @@
-# Virtual Model Emulator v2.1.1
+# Virtual Model Emulator v2.1.2
 
 A Pinokio app that provides a local OpenAI-compatible HTTP endpoint with **true model name emulation** powered by LiteLLM proxy server and PostgreSQL database. Route any model name to any provider - make Pinokio apps think they're talking to one model while actually using another.
 
@@ -8,7 +8,7 @@ A **model name emulator** that translates model names for Pinokio applications. 
 
 **Example**: Configure the emulator to respond to `gpt-4` requests while actually routing them to DeepSeek or Groq.
 
-## Features (v2.1.1)
+## Features (v2.1.2)
 
 ### ✅ What Works
 
@@ -325,6 +325,11 @@ The LiteLLM proxy exposes these endpoints:
 1. Check if port 5432 is in use: `netstat -an | grep 5432`
 2. Check `postgres/logfile` for error messages
 3. Try reinitializing: delete `postgres/data` and run install again
+
+**"PostgreSQL directory exists but .env file is missing" or vice versa**
+- This error prevents password mismatch issues between PostgreSQL and .env
+- If you deleted only one of these (postgres/ or .env), delete the other as well
+- Then run the install again for a fresh setup with matching credentials
 
 **"Migration failed" error on startup**
 1. Stop the app

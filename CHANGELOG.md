@@ -1,5 +1,24 @@
 # Changelog
 
+## [2.1.2] - 2026-01-01
+
+### Fixed - Installation State Consistency
+
+**Critical bug fix:**
+- Added protection against password mismatch when reinstalling
+- Installation now detects inconsistent state (postgres/ exists but .env missing, or vice versa)
+- Prevents silent authentication failures caused by mismatched database credentials
+
+**Documentation and metadata fixes:**
+- Updated pinokio.json description: SQLite → PostgreSQL
+- Fixed start.js comment: "Flask server" → "API server" (server.py uses http.server, not Flask)
+- Added troubleshooting section for password mismatch errors
+
+**Version consistency:**
+- All version references now aligned to 2.1.2
+
+---
+
 ## [2.1.1] - 2025-12-31
 
 ### Changed - PostgreSQL Database Backend

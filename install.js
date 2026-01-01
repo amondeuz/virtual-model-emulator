@@ -17,7 +17,7 @@ def run_command(cmd, desc=""):
     return result
 
 print('='*60)
-print('Virtual Model Emulator v2.1.1 - Installation')
+print('Virtual Model Emulator v2.1.2 - Installation')
 print('='*60)
 
 # 1. INSTALL/UPGRADE DEPENDENCIES
@@ -40,6 +40,23 @@ postgres_version = '16.1-1'
 postgres_url = f'https://get.enterprisedb.com/postgresql/postgresql-{postgres_version}-windows-x64-binaries.zip'
 postgres_zip = 'postgres.zip'
 postgres_dir = 'postgres'
+env_file = '.env'
+
+# Check for state consistency before proceeding
+postgres_exists = os.path.exists(postgres_dir)
+env_exists = os.path.exists(env_file)
+
+if postgres_exists and not env_exists:
+    print('[ERROR] PostgreSQL directory exists but .env file is missing.')
+    print('[ERROR] This can cause password mismatch issues.')
+    print('[ERROR] To fix: Delete the postgres/ directory and run install again.')
+    sys.exit(1)
+
+if not postgres_exists and env_exists:
+    print('[ERROR] .env file exists but PostgreSQL directory is missing.')
+    print('[ERROR] This can cause password mismatch issues.')
+    print('[ERROR] To fix: Delete the .env file and run install again.')
+    sys.exit(1)
 
 if not os.path.exists(postgres_dir):
     print(f'Downloading PostgreSQL {postgres_version}...')
@@ -91,7 +108,6 @@ else:
 
 # 3. GENERATE .ENV FILE
 print('\\n[3/5] Generating .env file...')
-env_file = '.env'
 if not os.path.exists(env_file):
     # Use password from initialization, or generate new one if PostgreSQL was already installed
     db_password = os.environ.get('PG_PASSWORD', secrets.token_urlsafe(16))

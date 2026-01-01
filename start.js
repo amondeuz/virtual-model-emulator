@@ -28,7 +28,7 @@ module.exports = {
         on: [{ event: "/Uvicorn running/", done: true }]
       }
     },
-    // Step 4: Start Flask server
+    // Step 4: Start API server
     {
       method: "shell.run",
       params: {
