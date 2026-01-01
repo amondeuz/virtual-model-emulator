@@ -13,7 +13,7 @@ import urllib.error
 import uuid
 from pathlib import Path
 
-PORT = 8765
+PORT = 8775
 LITELLM_URL = "http://127.0.0.1:11434"
 BASE_DIR = Path(__file__).parent
 PUBLIC_DIR = BASE_DIR / "public"
@@ -669,3 +669,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
