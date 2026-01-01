@@ -14,7 +14,8 @@ import uuid
 from pathlib import Path
 
 PORT = 8775
-LITELLM_URL = "http://127.0.0.1:11434"
+LITELLM_PORT = os.environ.get('LITELLM_PORT', '11435')
+LITELLM_URL = f"http://127.0.0.1:{LITELLM_PORT}"
 BASE_DIR = Path(__file__).parent
 PUBLIC_DIR = BASE_DIR / "public"
 CONFIG_DIR = BASE_DIR / "config"
@@ -698,4 +699,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
