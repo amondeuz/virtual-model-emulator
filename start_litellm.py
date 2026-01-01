@@ -37,7 +37,7 @@ try:
     result = subprocess.run([
         'litellm',
         '--config', 'config.yaml',
-        '--port', '11434',
+        '--port', litellm_port,
         '--host', '127.0.0.1'
     ], env=env_vars)
 
@@ -55,3 +55,4 @@ except FileNotFoundError:
 except Exception as e:
     print(f'[ERROR] LiteLLM failed: {e}', flush=True)
     sys.exit(1)
+
