@@ -17,6 +17,7 @@ print('[OK] DATABASE_URL loaded', flush=True)
 if 'postgresql' in database_url.lower():
     print('[INFO] Using PostgreSQL database', flush=True)
     print('[INFO] Prisma client will be generated automatically by LiteLLM', flush=True)
+    print('[INFO] Note: First startup may be slow while Prisma generates the database client', flush=True)
 
     # Verify PostgreSQL is ready before starting LiteLLM
     print('[INFO] Verifying PostgreSQL is accepting connections...', flush=True)
