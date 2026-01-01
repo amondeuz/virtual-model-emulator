@@ -1,30 +1,17 @@
 """Load .env and start LiteLLM."""
-import os
 import subprocess
 import sys
 
+from env_loader import load_env, get_database_url
+
 # Load .env file
-env_file = '.env'
-if not os.path.exists(env_file):
-    print('[ERROR] .env file not found', flush=True)
-    sys.exit(1)
-
 print('[INFO] Loading .env file...', flush=True)
-env_vars = os.environ.copy()
+env_vars = load_env()
 
-with open(env_file, 'r') as f:
-    for line in f:
-        line = line.strip()
-        if line and not line.startswith('#') and '=' in line:
-            key, value = line.split('=', 1)
-            env_vars[key.strip()] = value.strip()
+# Verify DATABASE_URL exists
+database_url = get_database_url(env_vars)
+print('[OK] DATABASE_URL loaded', flush=True)
 
-database_url = env_vars.get('DATABASE_URL')
-if not database_url:
-    print('[ERROR] DATABASE_URL not found in .env', flush=True)
-    sys.exit(1)
-
-print(f'[OK] DATABASE_URL loaded', flush=True)
 print('[INFO] Starting LiteLLM with PostgreSQL database...', flush=True)
 
 # Start LiteLLM with environment variables loaded
