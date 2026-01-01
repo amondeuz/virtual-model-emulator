@@ -345,7 +345,7 @@
 
       <div class="form-group">
         <label for="api-key-input">API Key</label>
-        <input type="password" id="api-key-input" placeholder="Paste your API key here">
+        <input type="password" id="api-key-input" placeholder="Paste your API key here" autocomplete="off" autocomplete="new-password">
         <p class="form-hint">
           <a id="api-key-link" href="#" target="_blank">Get your API key from the provider &rarr;</a>
         </p>
@@ -353,28 +353,32 @@
 
       <div class="modal-buttons">
         <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-        <button class="btn btn-primary" onclick="saveAccount()">Save Account</button>
+        <button class="btn btn-primary" id="save-account-btn" onclick="saveAccount()">Save Account</button>
       </div>
     </div>
   </div>
 
   <script>
-    // Provider definitions - sorted alphabetically
-    var PROVIDERS = [
-      { id: 'aiml', name: 'AI/ML API', keyLink: 'https://aimlapi.com/', initials: 'AI' },
-      { id: 'bytez', name: 'Bytez', keyLink: 'https://bytez.com/', initials: 'BZ' },
-      { id: 'cerebras', name: 'Cerebras', keyLink: 'https://cloud.cerebras.ai/platform', initials: 'CB' },
-      { id: 'cloudflare', name: 'Cloudflare Workers AI', keyLink: 'https://dash.cloudflare.com/', initials: 'CF' },
-      { id: 'deepseek', name: 'DeepSeek', keyLink: 'https://platform.deepseek.com/api_keys', initials: 'DS' },
-      { id: 'gemini', name: 'Google Gemini', keyLink: 'https://aistudio.google.com/app/apikey', initials: 'GE' },
-      { id: 'groq', name: 'Groq', keyLink: 'https://console.groq.com/keys', initials: 'GQ' },
-      { id: 'huggingface', name: 'Hugging Face', keyLink: 'https://huggingface.co/settings/tokens', initials: 'HF' },
-      { id: 'openrouter', name: 'OpenRouter', keyLink: 'https://openrouter.ai/keys', initials: 'OR' }
-    ];
+    // Providers fetched dynamically from server
+    var PROVIDERS = [];
+
+    // Provider key links (static - for documentation URLs)
+    var PROVIDER_KEY_LINKS = {
+      aiml: 'https://aimlapi.com/',
+      bytez: 'https://bytez.com/',
+      cerebras: 'https://cloud.cerebras.ai/platform',
+      cloudflare: 'https://dash.cloudflare.com/',
+      deepseek: 'https://platform.deepseek.com/api_keys',
+      gemini: 'https://aistudio.google.com/app/apikey',
+      groq: 'https://console.groq.com/keys',
+      huggingface: 'https://huggingface.co/settings/tokens',
+      openrouter: 'https://openrouter.ai/keys'
+    };
 
     var accounts = [];
     var editMode = {};  // Track which provider is in edit mode
     var selectedProvider = null;  // Currently selected provider for the modal
+    var isSaving = false;  // Prevent double-submission
 
     function showStatus(message, type) {
       var container = document.getElementById('status-container');
@@ -389,7 +393,34 @@
     }
 
     function getProviderInfo(id) {
-      return PROVIDERS.find(function(p) { return p.id === id; }) || { id: id, name: id, initials: id.substring(0, 2).toUpperCase() };
+      var provider = PROVIDERS.find(function(p) { return p.id === id; });
+      if (provider) {
+        // Add keyLink and initials from static data
+        return {
+          id: provider.id,
+          name: provider.name,
+          keyLink: PROVIDER_KEY_LINKS[provider.id] || '#',
+          initials: provider.name.substring(0, 2).toUpperCase()
+        };
+      }
+      return { id: id, name: id, initials: id.substring(0, 2).toUpperCase(), keyLink: '#' };
+    }
+
+    function loadProviders() {
+      return fetch('/providers/list')
+        .then(function(response) {
+          if (response.ok) {
+            return response.json();
+          }
+          return { providers: [] };
+        })
+        .then(function(data) {
+          PROVIDERS = data.providers || [];
+        })
+        .catch(function(err) {
+          console.error('Failed to load providers:', err);
+          PROVIDERS = [];
+        });
     }
 
     function loadAccounts() {
@@ -634,9 +665,13 @@
     }
 
     function saveAccount() {
+      // Prevent double-submission
+      if (isSaving) return;
+
       var provider = selectedProvider ? selectedProvider.id : null;
       var accountName = document.getElementById('account-name-input').value.trim();
       var apiKey = document.getElementById('api-key-input').value.trim();
+      var saveBtn = document.getElementById('save-account-btn');
 
       if (!provider) {
         showStatus('Please select a provider', 'error');
@@ -650,6 +685,11 @@
         showStatus('Please enter an API key', 'error');
         return;
       }
+
+      // Set saving state
+      isSaving = true;
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving...';
 
       fetch('/providers/connect', {
         method: 'POST',
@@ -676,7 +716,13 @@
         }
       })
       .catch(function(err) {
-        showStatus('Connection error: ' + err.message, 'error');
+        showStatus('Connection error: ' + err.message + '. Please try again.', 'error');
+      })
+      .finally(function() {
+        // Reset saving state
+        isSaving = false;
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save Account';
       });
     }
 
@@ -690,9 +736,11 @@
       if (e.target === this) closeModal();
     });
 
-    // Initialize
-    setupProviderDropdown();
-    loadAccounts();
+    // Initialize - load providers first, then accounts
+    loadProviders().then(function() {
+      setupProviderDropdown();
+      loadAccounts();
+    });
   </script>
 </body>
 </html>

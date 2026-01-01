@@ -37,7 +37,8 @@ def load_env(env_file='.env'):
 
     env_vars = os.environ.copy()
 
-    with open(env_file, 'r') as f:
+    # Use utf-8-sig to handle BOM if present (e.g., files created by Windows Notepad)
+    with open(env_file, 'r', encoding='utf-8-sig') as f:
         for line in f:
             line = line.strip()
             if line and not line.startswith('#') and '=' in line:
@@ -67,24 +68,43 @@ def get_database_url(env_vars=None):
         print('[ERROR] DATABASE_URL not found in environment', flush=True)
         sys.exit(1)
 
-    # Validate format
+    # Validate format with explicit component checking and descriptive errors
     try:
         parsed = urlparse(database_url)
 
         if parsed.scheme not in ('postgresql', 'postgres'):
             print(f'[ERROR] DATABASE_URL must use postgresql:// scheme, got: {parsed.scheme}', flush=True)
+            print('[ERROR] Expected format: postgresql://user:password@host:port/database', flush=True)
             sys.exit(1)
 
         if not parsed.hostname:
             print('[ERROR] DATABASE_URL missing hostname', flush=True)
+            print('[ERROR] Expected format: postgresql://user:password@host:port/database', flush=True)
+            sys.exit(1)
+
+        if not parsed.username:
+            print('[ERROR] DATABASE_URL missing username', flush=True)
+            print('[ERROR] Expected format: postgresql://user:password@host:port/database', flush=True)
+            sys.exit(1)
+
+        if not parsed.password:
+            print('[ERROR] DATABASE_URL missing password', flush=True)
+            print('[ERROR] Expected format: postgresql://user:password@host:port/database', flush=True)
+            sys.exit(1)
+
+        if not parsed.port:
+            print('[ERROR] DATABASE_URL missing port', flush=True)
+            print('[ERROR] Expected format: postgresql://user:password@host:port/database', flush=True)
             sys.exit(1)
 
         if not parsed.path or parsed.path == '/':
             print('[ERROR] DATABASE_URL missing database name', flush=True)
+            print('[ERROR] Expected format: postgresql://user:password@host:port/database', flush=True)
             sys.exit(1)
 
     except Exception as e:
         print(f'[ERROR] Invalid DATABASE_URL format: {e}', flush=True)
+        print('[ERROR] Run install again to regenerate .env file', flush=True)
         sys.exit(1)
 
     return database_url

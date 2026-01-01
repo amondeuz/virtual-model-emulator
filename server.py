@@ -6,6 +6,7 @@ import json
 import os
 import http.server
 import socketserver
+import threading
 import urllib.request
 import urllib.parse
 import urllib.error
@@ -18,18 +19,36 @@ PUBLIC_DIR = BASE_DIR / "public"
 CONFIG_DIR = BASE_DIR / "config"
 ACCOUNTS_FILE = CONFIG_DIR / "accounts.json"
 
+# Lock for thread-safe wildcard operations (prevents race conditions with rapid clicks)
+_wildcard_lock = threading.Lock()
+
 # Ensure config directory exists
 CONFIG_DIR.mkdir(exist_ok=True)
 
 def get_master_key():
-    """Read master key from config.yaml."""
+    """Read and validate master key from config.yaml.
+
+    LiteLLM requires master key to start with 'sk-' and be at least 32 chars.
+    """
     config_file = BASE_DIR / "config.yaml"
+    master_key = "sk-litellm-master-key"
+
     if config_file.exists():
         content = config_file.read_text()
         for line in content.split('\n'):
             if 'master_key:' in line:
-                return line.split('master_key:')[1].strip()
-    return "sk-litellm-master-key"
+                master_key = line.split('master_key:')[1].strip()
+                break
+
+    # Validate master key format
+    if not master_key.startswith('sk-'):
+        print(f"[WARNING] Master key must start with 'sk-'. Current key: {master_key[:10]}...")
+        print("[WARNING] LiteLLM may reject this key. Edit config.yaml to fix.")
+
+    if len(master_key) < 32:
+        print(f"[WARNING] Master key should be at least 32 characters. Current length: {len(master_key)}")
+
+    return master_key
 
 def load_accounts():
     """Load accounts from JSON file (always reads fresh from disk)."""
@@ -58,30 +77,33 @@ def get_providers_with_accounts():
     return list(providers_with_accounts)
 
 def add_wildcard_to_database(provider_id, api_key):
-    """Add a wildcard route for a provider to the LiteLLM database via /model/new API."""
+    """Add a wildcard route for a provider to the LiteLLM database via /model/new API.
 
-    # Check if wildcard already exists (defensive - prevents duplicates)
-    models_info = litellm_request("/model/info")
-    if "data" in models_info:
-        for model_data in models_info.get("data", []):
-            model_name = model_data.get("model_info", {}).get("model_name", "")
-            if model_name == f"{provider_id}/*":
-                print(f"[INFO] Wildcard route {provider_id}/* already exists in database")
-                return {"success": True, "message": "Already exists"}
+    Thread-safe: Uses lock to prevent race conditions from rapid clicks.
+    """
+    with _wildcard_lock:
+        # Check if wildcard already exists (defensive - prevents duplicates)
+        models_info = litellm_request("/model/info")
+        if "data" in models_info:
+            for model_data in models_info.get("data", []):
+                model_name = model_data.get("model_info", {}).get("model_name", "")
+                if model_name == f"{provider_id}/*":
+                    print(f"[INFO] Wildcard route {provider_id}/* already exists in database")
+                    return {"success": True, "message": "Already exists"}
 
-    model_data = {
-        "model_name": f"{provider_id}/*",
-        "litellm_params": {
-            "model": f"{provider_id}/*",
-            "api_key": api_key
+        model_data = {
+            "model_name": f"{provider_id}/*",
+            "litellm_params": {
+                "model": f"{provider_id}/*",
+                "api_key": api_key
+            }
         }
-    }
-    result = litellm_request("/model/new", method="POST", data=model_data)
-    if "error" not in result:
-        print(f"[INFO] Added wildcard route {provider_id}/* to database")
-    else:
-        print(f"[WARNING] Failed to add wildcard route {provider_id}/*: {result.get('error')}")
-    return result
+        result = litellm_request("/model/new", method="POST", data=model_data)
+        if "error" not in result:
+            print(f"[INFO] Added wildcard route {provider_id}/* to database")
+        else:
+            print(f"[WARNING] Failed to add wildcard route {provider_id}/*: {result.get('error')}")
+        return result
 
 def remove_wildcard_from_database(provider_id):
     """Remove a wildcard route for a provider from the LiteLLM database via /model/delete API."""
@@ -125,8 +147,30 @@ def has_any_api_keys():
         return True
     return any(os.environ.get(p["envVar"]) for p in PROVIDERS)
 
+def _sanitize_error(error_msg):
+    """Remove potentially sensitive information from error messages.
+
+    Strips API keys and other credentials that might appear in error messages.
+    """
+    if not error_msg:
+        return "Unknown error"
+
+    # List of patterns that might contain sensitive data
+    sensitive_patterns = ['api_key', 'apikey', 'api-key', 'bearer', 'token', 'password', 'secret']
+
+    # Convert to string and lowercase for checking
+    error_lower = str(error_msg).lower()
+
+    # If error contains sensitive patterns, return generic message
+    for pattern in sensitive_patterns:
+        if pattern in error_lower:
+            return "Request failed (details logged server-side)"
+
+    return str(error_msg)
+
+
 def litellm_request(path, method="GET", data=None):
-    """Make request to LiteLLM API."""
+    """Make request to LiteLLM API with logging for debugging."""
     url = f"{LITELLM_URL}{path}"
     headers = {
         "Authorization": f"Bearer {get_master_key()}",
@@ -142,9 +186,20 @@ def litellm_request(path, method="GET", data=None):
         with urllib.request.urlopen(req, timeout=30) as response:
             return json.loads(response.read().decode())
     except urllib.error.HTTPError as e:
-        return {"error": str(e), "status": e.code}
+        # Log full details server-side for debugging
+        print(f"[ERROR] LiteLLM request failed: {method} {path} -> HTTP {e.code}", flush=True)
+        try:
+            error_body = e.read().decode()
+            print(f"[ERROR] Response: {error_body[:500]}", flush=True)
+        except:
+            pass
+        return {"error": _sanitize_error(str(e)), "status": e.code}
+    except urllib.error.URLError as e:
+        print(f"[ERROR] LiteLLM connection failed: {method} {path} -> {e.reason}", flush=True)
+        return {"error": "LiteLLM is not reachable. Is it running?", "offline": True}
     except Exception as e:
-        return {"error": str(e)}
+        print(f"[ERROR] LiteLLM request error: {method} {path} -> {e}", flush=True)
+        return {"error": _sanitize_error(str(e))}
 
 # Providers sorted alphabetically by name
 PROVIDERS = [
@@ -272,12 +327,27 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
                 })
             self.send_json({"active": active_models, "count": len(active_models)})
 
+        elif path == "/providers/list":
+            # Return list of all supported providers (for dynamic frontend use)
+            self.send_json({"providers": PROVIDERS})
+
         elif path == "/models":
             provider = query.get("provider", [""])[0]
             models = []
 
             # Query LiteLLM proxy for available models
             result = litellm_request("/v1/models")
+
+            # Check if LiteLLM is offline
+            if "offline" in result or "error" in result:
+                error_msg = result.get("error", "LiteLLM is not available")
+                self.send_json({
+                    "models": [],
+                    "error": error_msg,
+                    "offline": result.get("offline", False)
+                })
+                return
+
             if "data" in result:
                 provider_info = next((p for p in PROVIDERS if p["id"] == provider), None) if provider else None
                 prefix = provider_info["prefix"] if provider_info else ""
@@ -394,17 +464,21 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
             }
             """
             data = self.read_json_body()
-            account_name = data.get("account", "")
-            provider = data.get("provider")
-            model = data.get("model")
+            account_name = data.get("account", "").strip()
+            provider = data.get("provider", "").strip()
+            model = data.get("model", "").strip()
             emulated_name = data.get("emulatedModelName", model)
+
+            # Validate and clean emulated name
+            if emulated_name:
+                emulated_name = emulated_name.strip()
 
             if not provider or not model:
                 self.send_json({"success": False, "error": "Provider and model required"}, 400)
                 return
 
             if not emulated_name:
-                self.send_json({"success": False, "error": "Emulated model name required"}, 400)
+                self.send_json({"success": False, "error": "Emulated model name required (cannot be empty or whitespace)"}, 400)
                 return
 
             # Find API key
@@ -447,7 +521,7 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
             if "error" in result:
                 self.send_json({
                     "success": False,
-                    "error": result.get("error")
+                    "error": _sanitize_error(result.get("error"))
                 }, 500)
             else:
                 model_id = result.get("model_info", {}).get("id")
@@ -470,7 +544,7 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
             if "error" in models_info:
                 self.send_json({
                     "success": False,
-                    "error": models_info.get("error")
+                    "error": _sanitize_error(models_info.get("error"))
                 }, 500)
                 return
 
@@ -511,14 +585,6 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
                 "deleted": deleted_count,
                 "emulations": emulations
             })
-
-        elif path == "/config/save":
-            # Just acknowledge - config is applied on start
-            self.send_json({"success": True})
-
-        elif path == "/config/savePreset":
-            # Presets not implemented yet
-            self.send_json({"success": False, "error": "Presets not implemented"}, 501)
 
         else:
             self.send_json({"error": "Not found"}, 404)
