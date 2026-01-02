@@ -1,263 +1,138 @@
-"""PostgreSQL lifecycle management."""
+"""PostgreSQL configuration and paths."""
 import os
-import subprocess
+import socket
+import sys
 import time
+from pathlib import Path
 
-from postgres_config import (
-    PG_CTL, CREATEDB, PG_ISREADY, DATA_DIR, LOG_FILE,
-    PG_PORT, PG_USER, PG_HOST, PG_DATABASE, print_error,
-    is_port_in_use
-)
-from env_loader import load_env, get_password_from_url
+BASE_DIR = Path(__file__).parent
+POSTGRES_DIR = BASE_DIR / 'postgres'
+BIN_DIR = POSTGRES_DIR / 'bin'
+DATA_DIR = POSTGRES_DIR / 'data'
+LOG_FILE = POSTGRES_DIR / 'logfile'
+
+# Executables (cross-platform)
+EXE_EXT = '.exe' if sys.platform == 'win32' else ''
+PG_CTL = BIN_DIR / f'pg_ctl{EXE_EXT}'
+INITDB = BIN_DIR / f'initdb{EXE_EXT}'
+CREATEDB = BIN_DIR / f'createdb{EXE_EXT}'
+PSQL = BIN_DIR / f'psql{EXE_EXT}'
+PG_ISREADY = BIN_DIR / f'pg_isready{EXE_EXT}'
 
 
-def find_open_port(start_port=5450, max_attempts=100):
-    """Find an open port starting from start_port.
-
-    CRITICAL FIX: Increased max_attempts from 10 to 100
-    This allows searching ports 5450-5550 instead of just 5432-5441.
-    When v2.0.0 and v2.1.2 run together, this prevents "all ports in use" errors.
+def is_port_in_use(port, retries=3):
+    """Check if a port is in use (Windows-compatible with retries).
 
     Args:
-        start_port: Port to start checking from
-        max_attempts: Maximum ports to check (100 = 54502-5550)
+        port: Port number to check
+        retries: Number of retry attempts for uncertain results
 
     Returns:
-        int: First open port found, or None if none available
+        bool: True if port is in use or uncertain, False only if definitely free
     """
-    for port in range(start_port, start_port + max_attempts):
-        if not is_port_in_use(port):
-            return port
-    return None
-
-
-class PostgreSQLManager:
-    """Manages PostgreSQL server lifecycle."""
-
-    def __init__(self):
-        self.data_dir = DATA_DIR
-        self.log_file = LOG_FILE
-        self.port = PG_PORT
-        self.user = PG_USER
-        self.host = PG_HOST
-        self.database = PG_DATABASE
-        self._env = None
-
-    @property
-    def pg_env(self):
-        """Get PostgreSQL environment variables (cached)."""
-        if self._env is None:
-            self._env = os.environ.copy()
-            try:
-                env_vars = load_env()
-                password = get_password_from_url(env_vars.get('DATABASE_URL', ''))
-                if password:
-                    self._env['PGPASSWORD'] = password
-            except SystemExit:
-                pass  # .env doesn't exist yet during initial install
-        return self._env
-
-    def is_running(self):
-        """Check if PostgreSQL is running.
-
-        Returns:
-            bool: True if server is running
-        """
+    for attempt in range(retries):
         try:
-            result = subprocess.run([
-                str(PG_CTL.resolve()), 'status',
-                '-D', str(self.data_dir.resolve())
-            ], capture_output=True, text=True, timeout=5)
-            # Use return code for reliability (0 = running, non-zero = not running)
-            # This is more reliable than text matching across platforms/locales
-            return result.returncode == 0
-        except Exception:
-            return False
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(1.0)
+                result = s.connect_ex(('localhost', port))
 
-    def wait_for_ready(self, timeout=30):
-        """Wait for PostgreSQL to accept connections.
+                # Definitive answers - return immediately
+                if result == 0:
+                    return True  # Port is in use
 
-        Args:
-            timeout: Maximum seconds to wait
+                # Connection refused - port is free (platform-specific codes)
+                # Windows: WSAECONNREFUSED = 10061
+                # Linux: ECONNREFUSED = 111
+                # macOS: ECONNREFUSED = 61
+                if sys.platform == 'win32' and result == 10061:
+                    return False
+                if sys.platform != 'win32' and result in (111, 61):
+                    return False
 
-        Returns:
-            bool: True if PostgreSQL is accepting connections
-        """
-        start = time.time()
-        pg_isready_path = str(PG_ISREADY.resolve())
+                # Uncertain result - will retry
 
-        while time.time() - start < timeout:
-            try:
-                result = subprocess.run([
-                    pg_isready_path,
-                    '-h', self.host,
-                    '-p', str(self.port),
-                    '-U', self.user,
-                    '-t', '3'  # pg_isready's internal timeout (seconds)
-                ], capture_output=True, text=True, timeout=5)
+        except socket.error:
+            # Socket error - will retry
+            pass
 
-                if result.returncode == 0:
-                    return True
-            except Exception:
-                pass
-            time.sleep(0.5)
+        if attempt < retries - 1:
+            time.sleep(0.2)
 
-        return False
+    # After all retries with uncertain result, assume port IS in use (fail closed for safety)
+    return True
 
-    def start(self, timeout=30):
-        """Start PostgreSQL server.
 
-        Args:
-            timeout: Maximum seconds to wait for startup
+def _is_port_free(port):
+    """Check if port is free (convenience wrapper).
 
-        Returns:
-            bool: True if started successfully
-        """
-        print('[INFO] Starting PostgreSQL...', flush=True)
+    Returns:
+        bool: True if port is free, False if in use
+    """
+    return not is_port_in_use(port, retries=1)
 
-        # Validate data directory exists
-        if not self.data_dir.exists():
-            print_error('data_dir_corrupt',
-                       'PostgreSQL data directory not found. Run install again.')
-            return False
 
-        # Check if already running
-        if self.is_running():
-            print('[OK] PostgreSQL already running', flush=True)
-            return True
+def _get_pg_port():
+    """Get PostgreSQL port from environment or find an available one.
 
-        # Check if port is available, try to find open port if needed
-        if is_port_in_use(self.port):
-            print(f'[WARN] Port {self.port} already in use', flush=True)
-            open_port = find_open_port(self.port, max_attempts=100)
-            if open_port:
-                print(f'[INFO] Using port {open_port} instead', flush=True)
-                self.port = open_port
-            else:
-                print('[ERROR] All PostgreSQL ports (54502-5550) are in use!', flush=True)
-                print('[ERROR] Close other PostgreSQL instances or database applications.', flush=True)
-                print('[ERROR] Or set PG_PORT environment variable to a specific free port.', flush=True)
-                return False
-
-        # Start server
+    Priority:
+    1. PG_PORT environment variable
+    2. Default port 5450 if available
+    3. Fallback to 5450, 5451, etc. if default is in use
+    """
+    # Check environment variable first
+    env_port = os.environ.get('PG_PORT')
+    if env_port:
         try:
-            print('[INFO] Starting PostgreSQL server...', flush=True)
-            result = subprocess.run([
-                str(PG_CTL.resolve()), 'start',
-                '-w', '-t', str(timeout),
-                '-D', str(self.data_dir.resolve()),
-                '-l', str(self.log_file.resolve()),
-                '-o', f'-p {self.port}'
-            ], capture_output=True, text=True, timeout=timeout + 5)
+            return int(env_port)
+        except ValueError:
+            pass
 
-            if result.returncode != 0:
-                print(f'[ERROR] pg_ctl failed: {result.stderr}', flush=True)
-                return False
+    # Try default port
+    default_port = 5450
+    if _is_port_free(default_port):
+        return default_port
 
-            print('[OK] PostgreSQL started', flush=True)
+    # Fallback: try alternative ports
+    for offset in range(1, 100):
+        alt_port = default_port + offset
+        if _is_port_free(alt_port):
+            print(f'[INFO] Port {default_port} in use, using {alt_port} instead', flush=True)
+            return alt_port
 
-        except subprocess.TimeoutExpired:
-            print_error('timeout')
-            return False
-        except Exception as e:
-            print(f'[ERROR] Failed to start: {e}', flush=True)
-            return False
+    # Give up and use default (will fail later with clear error)
+    return default_port
 
-        # Wait for connections
-        print('[INFO] Waiting for PostgreSQL to accept connections...', flush=True)
-        if not self.wait_for_ready(timeout=timeout):
-            print_error('connection_failed',
-                       'PostgreSQL started but not accepting connections')
-            return False
 
-        print('[OK] PostgreSQL accepting connections', flush=True)
-        return True
+# Connection settings
+PG_PORT = _get_pg_port()
+PG_USER = 'postgres'
+PG_DATABASE = 'litellm'
+PG_HOST = 'localhost'
 
-    def stop(self, mode='fast', timeout=30):
-        """Stop PostgreSQL server.
+# Error messages with actionable guidance
+ERROR_MESSAGES = {
+    'port_in_use': f'[ERROR] Port {PG_PORT} is already in use. Stop other PostgreSQL instances or set PG_PORT environment variable.',
+    'data_dir_corrupt': '[ERROR] PostgreSQL data directory is corrupted. Delete postgres/data and reinstall.',
+    'timeout': '[ERROR] PostgreSQL startup timed out. Check postgres/logfile for details.',
+    'permission': '[ERROR] Permission denied. Run Pinokio as administrator.',
+    'connection_failed': '[ERROR] Cannot connect to PostgreSQL. Check if the server is running.',
+    'createdb_failed': '[ERROR] Failed to create database. Check postgres/logfile for details.',
+}
 
-        Args:
-            mode: 'fast', 'smart', or 'immediate'
-            timeout: Maximum seconds to wait
 
-        Returns:
-            bool: True if stopped successfully
-        """
-        print('[INFO] Stopping PostgreSQL...', flush=True)
+def get_connection_params():
+    """Get PostgreSQL connection parameters."""
+    return {
+        'host': PG_HOST,
+        'port': PG_PORT,
+        'user': PG_USER,
+        'database': PG_DATABASE
+    }
 
-        try:
-            result = subprocess.run([
-                str(PG_CTL.resolve()), 'stop',
-                '-D', str(self.data_dir.resolve()),
-                '-m', mode
-            ], capture_output=True, text=True, timeout=timeout)
 
-            if result.returncode == 0:
-                print('[OK] PostgreSQL stopped', flush=True)
-                return True
-            elif 'not running' in result.stderr.lower():
-                print('[OK] PostgreSQL was not running', flush=True)
-                return True
-            else:
-                print(f'[WARN] Stop issue: {result.stderr}', flush=True)
-                return False
-
-        except subprocess.TimeoutExpired:
-            # Try immediate shutdown
-            print('[WARN] Graceful stop timed out, forcing immediate shutdown...',
-                  flush=True)
-            try:
-                subprocess.run([
-                    str(PG_CTL.resolve()), 'stop',
-                    '-D', str(self.data_dir.resolve()),
-                    '-m', 'immediate'
-                ], capture_output=True, timeout=10)
-                print('[OK] PostgreSQL stopped (immediate)', flush=True)
-                return True
-            except Exception:
-                print('[ERROR] Failed to stop PostgreSQL', flush=True)
-                return False
-
-        except Exception as e:
-            print(f'[ERROR] Stop failed: {e}', flush=True)
-            return False
-
-    def create_database(self, dbname=None):
-        """Create database if it doesn't exist.
-
-        Args:
-            dbname: Database name (defaults to configured database)
-
-        Returns:
-            bool: True if database exists or was created
-        """
-        if dbname is None:
-            dbname = self.database
-
-        try:
-            print(f'[INFO] Creating {dbname} database...', flush=True)
-            result = subprocess.run([
-                str(CREATEDB.resolve()),
-                '-U', self.user,
-                dbname
-            ], capture_output=True, text=True, timeout=10, env=self.pg_env)
-
-            if result.returncode == 0:
-                print(f'[OK] Database {dbname} created', flush=True)
-                return True
-            elif 'already exists' in result.stderr:
-                print(f'[OK] Database {dbname} exists', flush=True)
-                return True
-            elif 'password authentication failed' in result.stderr.lower() or \
-                 'permission denied' in result.stderr.lower():
-                print('[ERROR] Database password mismatch!', flush=True)
-                print('[ERROR] PostgreSQL was initialized with a different password.', flush=True)
-                print('[ERROR] To fix: Delete postgres/ directory and .env file, then run install again.', flush=True)
-                return False
-            else:
-                print(f'[WARN] createdb: {result.stderr}', flush=True)
-                return False
-
-        except Exception as e:
-            print(f'[WARN] Database creation failed: {e}', flush=True)
-            return False
+def print_error(error_type, details=None):
+    """Print an actionable error message."""
+    message = ERROR_MESSAGES.get(error_type, f'[ERROR] {error_type}')
+    if details:
+        message += f'\nDetails: {details}'
+    print(message, flush=True)
