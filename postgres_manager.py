@@ -130,17 +130,19 @@ class PostgreSQLManager:
         # Start server
         try:
             print('[INFO] Starting PostgreSQL server...', flush=True)
+            print('[DEBUG] About to call pg_ctl start', flush=True)
             result = subprocess.run([
                 str(PG_CTL.resolve()), 'start',
                 '-D', str(self.data_dir.resolve()),
                 '-l', str(self.log_file.resolve()),
                 '-o', f'-p {self.port}'
             ], capture_output=True, text=True, timeout=timeout + 5)
-
+            print('[DEBUG] pg_ctl returned', flush=True)
+            
             if result.returncode != 0:
                 print(f'[ERROR] pg_ctl failed: {result.stderr}', flush=True)
                 return False
-
+            
             print('[OK] PostgreSQL started', flush=True)
 
         except subprocess.TimeoutExpired:
@@ -248,6 +250,7 @@ class PostgreSQLManager:
         except Exception as e:
             print(f'[WARN] Database creation failed: {e}', flush=True)
             return False
+
 
 
 
