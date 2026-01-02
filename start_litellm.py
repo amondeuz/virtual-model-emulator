@@ -52,6 +52,15 @@ def main():
     # Verify DATABASE_URL exists
     database_url = get_database_url(env_vars)
     print('[OK] DATABASE_URL loaded', flush=True)
+    # Fix config.yaml to use actual DATABASE_URL instead of placeholder
+    from pathlib import Path
+    config_file = Path(__file__).parent / 'config.yaml'
+    if config_file.exists():
+        content = config_file.read_text()
+        # Replace the placeholder with actual database URL
+        content = content.replace('database_url: env/DATABASE_URL', f'database_url: {database_url}')
+        config_file.write_text(content)
+        print('[OK] Updated config.yaml with DATABASE_URL', flush=True)
 
     # Get LiteLLM port from .env (defaults to 11435)
     litellm_port = env_vars.get('LITELLM_PORT', '11435')
@@ -181,5 +190,6 @@ def main():
 
 if __name__ == '__main__':
     main()
+
 
 
