@@ -220,6 +220,8 @@ class PostgreSQLManager:
             print(f'[INFO] Creating {dbname} database...', flush=True)
             result = subprocess.run([
                 str(CREATEDB.resolve()),
+                '-h', self.host,
+                '-p', str(self.port),
                 '-U', self.user,
                 dbname
             ], capture_output=True, text=True, timeout=10, env=self.pg_env)
@@ -243,6 +245,7 @@ class PostgreSQLManager:
         except Exception as e:
             print(f'[WARN] Database creation failed: {e}', flush=True)
             return False
+
 
 
 
