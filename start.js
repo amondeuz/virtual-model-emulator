@@ -25,7 +25,7 @@ module.exports = {
       params: {
         venv: "env",
         message: "python start_litellm.py",
-        on: [{ event: "/Uvicorn running/", done: true }]
+        on: [{ event: "/Application startup complete|Uvicorn running/", done: true }]
       }
     },
     // Step 4: Start API server
