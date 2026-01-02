@@ -40,7 +40,7 @@ module.exports = {
     {
       method: "local.set",
       params: {
-        url: "http://localhost:8765/config.html"
+        url: "http://localhost:8775/config.html"
       }
     }
   ]
