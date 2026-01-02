@@ -139,9 +139,9 @@ class PostgreSQLManager:
                 content += 'max_wal_senders = 0\n'
                 modified = True
         
-        if modified:
-            config_file.write_text(content)
-            print('[OK] Disabled WAL replication in postgresql.conf', flush=True)
+            if modified:
+                config_file.write_text(content)
+                print('[OK] Disabled WAL replication in postgresql.conf', flush=True)
                 
         # Check if port is available, try to find open port if needed
         if is_port_in_use(self.port):
@@ -274,6 +274,7 @@ class PostgreSQLManager:
         except Exception as e:
             print(f'[WARN] Database creation failed: {e}', flush=True)
             return False
+
 
 
 
