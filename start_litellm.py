@@ -56,6 +56,11 @@ def main():
     # Get LiteLLM port from .env (defaults to 11435)
     litellm_port = env_vars.get('LITELLM_PORT', '11435')
     print(f'[INFO] Using LiteLLM port {litellm_port}', flush=True)
+    # DEBUG: Verify what we actually loaded
+    print(f'[DEBUG] DATABASE_URL value: {database_url}', flush=True)
+    print(f'[DEBUG] DATABASE_URL in env_vars: {"DATABASE_URL" in env_vars}', flush=True)
+    if "DATABASE_URL" in env_vars:
+        print(f'[DEBUG] DATABASE_URL from env_vars: {env_vars["DATABASE_URL"]}', flush=True)
 
     # Prisma setup is handled automatically by LiteLLM on first startup
     if 'postgresql' in database_url.lower():
@@ -176,4 +181,5 @@ def main():
 
 if __name__ == '__main__':
     main()
+
 
