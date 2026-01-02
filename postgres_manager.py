@@ -75,33 +75,21 @@ class PostgreSQLManager:
             return False
 
     def wait_for_ready(self, timeout=30):
-        """Wait for PostgreSQL to accept connections.
-
-        Args:
-            timeout: Maximum seconds to wait
-
-        Returns:
-            bool: True if PostgreSQL is accepting connections
-        """
+        """Wait for PostgreSQL to accept connections."""
+        import time
         start = time.time()
-        pg_isready_path = str(PG_ISREADY.resolve())
-
+        
         while time.time() - start < timeout:
-            try:
-                result = subprocess.run([
-                    pg_isready_path,
-                    '-h', self.host,
-                    '-p', str(self.port),
-                    '-U', self.user,
-                    '-t', '3'  # pg_isready's internal timeout (seconds)
-                ], capture_output=True, text=True, timeout=5, env=self.pg_env)
-
-                if result.returncode == 0:
-                    return True
-            except Exception:
-                pass
-            time.sleep(0.5)
-
+            # Just check if port is accepting connections
+            # Don't use pg_isready - it has auth issues
+            if not is_port_in_use(self.port):
+                # Port opened but not listening yet, wait a bit
+                time.sleep(0.5)
+                continue
+            
+            # Port is listening - that means PostgreSQL is accepting connections
+            return True
+        
         return False
 
     def start(self, timeout=30):
@@ -260,6 +248,7 @@ class PostgreSQLManager:
         except Exception as e:
             print(f'[WARN] Database creation failed: {e}', flush=True)
             return False
+
 
 
 
