@@ -11,16 +11,16 @@ from postgres_config import (
 from env_loader import load_env, get_password_from_url
 
 
-def find_open_port(start_port=5432, max_attempts=100):
+def find_open_port(start_port=5450, max_attempts=100):
     """Find an open port starting from start_port.
 
     CRITICAL FIX: Increased max_attempts from 10 to 100
-    This allows searching ports 5432-5532 instead of just 5432-5441.
+    This allows searching ports 5450-5550 instead of just 5432-5441.
     When v2.0.0 and v2.1.2 run together, this prevents "all ports in use" errors.
 
     Args:
         start_port: Port to start checking from
-        max_attempts: Maximum ports to check (100 = 5432-5532)
+        max_attempts: Maximum ports to check (100 = 5450-5550)
 
     Returns:
         int: First open port found, or None if none available
@@ -134,7 +134,7 @@ class PostgreSQLManager:
                 print(f'[INFO] Using port {open_port} instead', flush=True)
                 self.port = open_port
             else:
-                print('[ERROR] All PostgreSQL ports (5432-5532) are in use!', flush=True)
+                print('[ERROR] All PostgreSQL ports (5450-5550) are in use!', flush=True)
                 print('[ERROR] Close other PostgreSQL instances or database applications.', flush=True)
                 print('[ERROR] Or set PG_PORT environment variable to a specific free port.', flush=True)
                 return False
@@ -261,3 +261,4 @@ class PostgreSQLManager:
         except Exception as e:
             print(f'[WARN] Database creation failed: {e}', flush=True)
             return False
+
