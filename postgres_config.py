@@ -76,8 +76,8 @@ def _get_pg_port():
 
     Priority:
     1. PG_PORT environment variable
-    2. Default port 5432 if available
-    3. Fallback to 5433, 5434, etc. if default is in use
+    2. Default port 5450 if available
+    3. Fallback to 5450, 5451, etc. if default is in use
     """
     # Check environment variable first
     env_port = os.environ.get('PG_PORT')
@@ -88,12 +88,12 @@ def _get_pg_port():
             pass
 
     # Try default port
-    default_port = 5432
+    default_port = 5450
     if _is_port_free(default_port):
         return default_port
 
     # Fallback: try alternative ports
-    for offset in range(1, 10):
+    for offset in range(1, 100):
         alt_port = default_port + offset
         if _is_port_free(alt_port):
             print(f'[INFO] Port {default_port} in use, using {alt_port} instead', flush=True)
@@ -136,3 +136,4 @@ def print_error(error_type, details=None):
     if details:
         message += f'\nDetails: {details}'
     print(message, flush=True)
+
