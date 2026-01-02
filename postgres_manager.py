@@ -94,7 +94,7 @@ class PostgreSQLManager:
                     '-p', str(self.port),
                     '-U', self.user,
                     '-t', '3'  # pg_isready's internal timeout (seconds)
-                ], capture_output=True, text=True, timeout=5)
+                ], capture_output=True, text=True, timeout=5, env=self.pg_env)
 
                 if result.returncode == 0:
                     return True
@@ -260,5 +260,6 @@ class PostgreSQLManager:
         except Exception as e:
             print(f'[WARN] Database creation failed: {e}', flush=True)
             return False
+
 
 
