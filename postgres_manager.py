@@ -134,7 +134,7 @@ class PostgreSQLManager:
                 str(PG_CTL.resolve()), 'start',
                 '-D', str(self.data_dir.resolve()),
                 '-l', str(self.log_file.resolve()),
-                '-o', f'-p {self.port}'
+                '-o', f'-p {self.port} -c max_wal_senders=0 -c wal_level=minimal'
             ])
             print('[OK] PostgreSQL started', flush=True)
 
@@ -245,6 +245,7 @@ class PostgreSQLManager:
         except Exception as e:
             print(f'[WARN] Database creation failed: {e}', flush=True)
             return False
+
 
 
 
