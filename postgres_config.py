@@ -51,13 +51,7 @@ def _is_port_free(port):
 
 
 def _get_pg_port():
-    """Get PostgreSQL port from environment or find an available one.
-
-    Priority:
-    1. PG_PORT environment variable
-    2. Default port 5450 if available
-    3. Fallback to 5450, 5451, etc. if default is in use
-    """
+    """Get PostgreSQL port from DATABASE_URL in .env or environment variable."""
     # Check environment variable first
     env_port = os.environ.get('PG_PORT')
     if env_port:
@@ -65,21 +59,23 @@ def _get_pg_port():
             return int(env_port)
         except ValueError:
             pass
-
-    # Try default port
-    default_port = 5450
-    if _is_port_free(default_port):
-        return default_port
-
-    # Fallback: try alternative ports
-    for offset in range(1, 100):
-        alt_port = default_port + offset
-        if _is_port_free(alt_port):
-            print(f'[INFO] Port {default_port} in use, using {alt_port} instead', flush=True)
-            return alt_port
-
-    # Give up and use default (will fail later with clear error)
-    return default_port
+    
+    # Try to extract from DATABASE_URL in .env
+    try:
+        from env_loader import load_env
+        env_vars = load_env()
+        database_url = env_vars.get('DATABASE_URL', '')
+        if database_url and ':5' in database_url:
+            # Extract port from URL like postgresql://user:pass@localhost:5450/db
+            parts = database_url.split(':')
+            for i, part in enumerate(parts):
+                if part.isdigit() and len(part) == 4 and part.startswith('5'):
+                    return int(part)
+    except:
+        pass
+    
+    # Default to 5450
+    return 5450
 
 
 # Connection settings
@@ -115,4 +111,5 @@ def print_error(error_type, details=None):
     if details:
         message += f'\nDetails: {details}'
     print(message, flush=True)
+
 
