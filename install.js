@@ -172,6 +172,7 @@ DATABASE_URL=postgresql://postgres:{db_password_encoded}@localhost:5432/litellm?
 
 # LiteLLM Configuration
 LITELLM_MASTER_KEY=sk-{secrets.token_hex(16)}
+LITELLM_PORT=11435
 '''
     with open(env_file, 'w') as f:
         f.write(env_content)
