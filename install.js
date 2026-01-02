@@ -137,6 +137,29 @@ if not os.path.exists(postgres_dir):
 
     try:
         run_command(f'"{initdb}" -D "{data_dir}" -U postgres -A scram-sha-256 --pwfile="{password_file}"', 'Initializing database with scram-sha-256 authentication')
+        # Fix WAL replication settings in postgresql.conf to prevent Windows crashes
+        # This MUST happen right after initdb, before PostgreSQL is started
+        config_file = os.path.join(data_dir, 'postgresql.conf')
+        if os.path.exists(config_file):
+            with open(config_file, 'r') as f:
+                config_content = f.read()
+            
+            # Set minimal WAL level to disable logical replication
+            config_content = config_content.replace('wal_level = replica', 'wal_level = minimal')
+            if 'wal_level = minimal' not in config_content and 'wal_level = replica' not in config_content:
+                config_content += '\nwal_level = minimal\n'
+            
+            # Disable WAL senders
+            if 'max_wal_senders = ' in config_content:
+                lines = config_content.split('\n')
+                config_content = '\n'.join([f'#{line}' if line.startswith('max_wal_senders = ') else line for line in lines])
+            
+            if 'max_wal_senders = 0' not in config_content:
+                config_content += 'max_wal_senders = 0\n'
+            
+            with open(config_file, 'w') as f:
+                f.write(config_content)
+            print('[OK] Configured PostgreSQL to disable WAL replication.')
     finally:
         # Clean up password file with verification - MUST succeed for security
         try:
