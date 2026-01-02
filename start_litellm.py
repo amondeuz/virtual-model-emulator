@@ -86,6 +86,10 @@ def main():
             logf.write('---\n')
         
         # Start LiteLLM process
+        # CRITICAL: Merge loaded env_vars with system environment
+        process_env = os.environ.copy()
+        process_env.update(env_vars)
+        
         process = subprocess.Popen(
             [
                 'litellm',
@@ -93,11 +97,11 @@ def main():
                 '--port', str(litellm_port),
                 '--host', '127.0.0.1'
             ],
-            env=env_vars,
+            env=process_env,  # ← Merged environment
             stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,  # Merge stderr into stdout
+            stderr=subprocess.STDOUT,
             text=True,
-            bufsize=1  # Line buffering for real-time output
+            bufsize=1
         )
 
         print('[INFO] LiteLLM process started, waiting for startup...', flush=True)
@@ -172,3 +176,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
