@@ -1,4 +1,5 @@
 """Load .env and start LiteLLM."""
+import os
 import subprocess
 import sys
 
@@ -12,6 +13,10 @@ env_vars = load_env()
 # Verify DATABASE_URL exists
 database_url = get_database_url(env_vars)
 print('[OK] DATABASE_URL loaded', flush=True)
+
+# Get LiteLLM port from .env (defaults to 11435)
+litellm_port = env_vars.get('LITELLM_PORT', '11435')
+print(f'[INFO] Using LiteLLM port {litellm_port}', flush=True)
 
 # Prisma setup is handled automatically by LiteLLM on first startup
 if 'postgresql' in database_url.lower():

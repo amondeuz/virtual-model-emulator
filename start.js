@@ -1,14 +1,6 @@
 module.exports = {
   daemon: true,
   run: [
-    {
-      method: "shell.run",
-      params: {
-        venv: "env",
-        message: "echo [INFO] LiteLLM configured for port 11435 (v2.1.2)",
-        env: { "LITELLM_PORT": "11435" }
-      }
-    },
     // Step 1: Validate configuration
     {
       method: "shell.run",
