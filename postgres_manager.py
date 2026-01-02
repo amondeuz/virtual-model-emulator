@@ -120,24 +120,24 @@ class PostgreSQLManager:
             content = config_file.read_text()
             modified = False
         
-        # Fix wal_level
-        if 'wal_level = replica' in content:
-            content = content.replace('wal_level = replica', 'wal_level = minimal')
-            modified = True
-        elif 'wal_level = minimal' not in content:
-            content += '\nwal_level = minimal\n'
-            modified = True
-        
-        # Fix max_wal_senders
-        if 'max_wal_senders = ' in content and 'max_wal_senders = 0' not in content:
-            # Comment out any existing max_wal_senders line
-            lines = content.split('\n')
-            content = '\n'.join([f'#{line}' if line.startswith('max_wal_senders = ') else line for line in lines])
-            modified = True
-        
-        if 'max_wal_senders = 0' not in content:
-            content += 'max_wal_senders = 0\n'
-            modified = True
+            # Fix wal_level
+            if 'wal_level = replica' in content:
+                content = content.replace('wal_level = replica', 'wal_level = minimal')
+                modified = True
+            elif 'wal_level = minimal' not in content:
+                content += '\nwal_level = minimal\n'
+                modified = True
+            
+            # Fix max_wal_senders
+            if 'max_wal_senders = ' in content and 'max_wal_senders = 0' not in content:
+                # Comment out any existing max_wal_senders line
+                lines = content.split('\n')
+                content = '\n'.join([f'#{line}' if line.startswith('max_wal_senders = ') else line for line in lines])
+                modified = True
+            
+            if 'max_wal_senders = 0' not in content:
+                content += 'max_wal_senders = 0\n'
+                modified = True
         
         if modified:
             config_file.write_text(content)
@@ -274,6 +274,7 @@ class PostgreSQLManager:
         except Exception as e:
             print(f'[WARN] Database creation failed: {e}', flush=True)
             return False
+
 
 
 
