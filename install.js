@@ -168,7 +168,7 @@ if not os.path.exists(env_file):
     # URL-encode password to handle special characters (+, /, =, etc.)
     db_password_encoded = url_quote(db_password, safe='')
     env_content = f'''# Database Configuration
-DATABASE_URL=postgresql://postgres:{db_password_encoded}@localhost:5432/litellm?schema=public&connection_limit=10&pool_timeout=30&connect_timeout=10
+DATABASE_URL=postgresql://postgres:{db_password_encoded}@localhost:5450/litellm?schema=public&connection_limit=10&pool_timeout=30&connect_timeout=10
 
 # LiteLLM Configuration
 LITELLM_MASTER_KEY=sk-{secrets.token_hex(16)}
