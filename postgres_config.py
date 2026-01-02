@@ -21,45 +21,24 @@ PG_ISREADY = BIN_DIR / f'pg_isready{EXE_EXT}'
 
 
 def is_port_in_use(port, retries=3):
-    """Check if a port is in use (Windows-compatible with retries).
-
-    Args:
-        port: Port number to check
-        retries: Number of retry attempts for uncertain results
-
-    Returns:
-        bool: True if port is in use or uncertain, False only if definitely free
-    """
+    """Check if a port is in use."""
     for attempt in range(retries):
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 s.settimeout(1.0)
-                result = s.connect_ex(('localhost', port))
-
-                # Definitive answers - return immediately
+                result = s.connect_ex(('127.0.0.1', port))
+                
                 if result == 0:
-                    return True  # Port is in use
-
-                # Connection refused - port is free (platform-specific codes)
-                # Windows: WSAECONNREFUSED = 10061
-                # Linux: ECONNREFUSED = 111
-                # macOS: ECONNREFUSED = 61
-                if sys.platform == 'win32' and result == 10061:
-                    return False
-                if sys.platform != 'win32' and result in (111, 61):
-                    return False
-
-                # Uncertain result - will retry
-
-        except socket.error:
-            # Socket error - will retry
+                    return True  # Connected = port IN USE
+                return False    # Failed = port FREE (return immediately)
+                
+        except Exception:
             pass
-
+        
         if attempt < retries - 1:
-            time.sleep(0.2)
-
-    # After all retries with uncertain result, assume port IS in use (fail closed for safety)
-    return True
+            time.sleep(0.1)
+    
+    return False  # Port is FREE
 
 
 def _is_port_free(port):
@@ -136,3 +115,4 @@ def print_error(error_type, details=None):
     if details:
         message += f'\nDetails: {details}'
     print(message, flush=True)
+
