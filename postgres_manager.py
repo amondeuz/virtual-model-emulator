@@ -144,7 +144,6 @@ class PostgreSQLManager:
             print('[INFO] Starting PostgreSQL server...', flush=True)
             result = subprocess.run([
                 str(PG_CTL.resolve()), 'start',
-                '-w', '-t', str(timeout),
                 '-D', str(self.data_dir.resolve()),
                 '-l', str(self.log_file.resolve()),
                 '-o', f'-p {self.port}'
@@ -261,4 +260,5 @@ class PostgreSQLManager:
         except Exception as e:
             print(f'[WARN] Database creation failed: {e}', flush=True)
             return False
+
 
