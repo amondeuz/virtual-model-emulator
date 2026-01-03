@@ -135,7 +135,7 @@ class PostgreSQLManager:
                 '-D', str(self.data_dir.resolve()),
                 '-l', str(self.log_file.resolve()),
                 '-o', f'-p {self.port}'
-            ], stdin=subprocess.DEVNULL)
+            ], stdin=subprocess.DEVNULL, creationflags=subprocess.CREATE_NEW_PROCESS_GROUP)
             print('[OK] PostgreSQL started', flush=True)
 
         except subprocess.TimeoutExpired:
@@ -245,6 +245,7 @@ class PostgreSQLManager:
         except Exception as e:
             print(f'[WARN] Database creation failed: {e}', flush=True)
             return False
+
 
 
 
