@@ -142,9 +142,7 @@ if not os.path.exists(postgres_dir):
         if os.path.exists(config_file):
             with open(config_file, 'r') as f:
                 config_content = f.read()
-            config_content = config_content.replace('wal_level = replica', 'wal_level = minimal')
-            if 'wal_level = minimal' not in config_content and 'wal_level = replica' not in config_content:
-                config_content += '\\nwal_level = minimal\\n'
+            config_content = config_content.replace('#wal_level = minimal', 'wal_level = minimal')
             if 'max_wal_senders = ' in config_content:
                 lines = config_content.split('\\n')
                 config_content = '\\n'.join([f'#{line}' if line.startswith('max_wal_senders = ') else line for line in lines])
