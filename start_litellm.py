@@ -103,6 +103,7 @@ def main():
         # CRITICAL: Merge loaded env_vars with system environment
         process_env = os.environ.copy()
         process_env.update(env_vars)
+        process_env['PYTHONIOENCODING'] = 'utf-8'
         
         process = subprocess.Popen(
             [
@@ -190,6 +191,7 @@ def main():
 
 if __name__ == '__main__':
     main()
+
 
 
 
