@@ -206,6 +206,8 @@ general_settings:
 litellm_settings:
   drop_params: true
   check_provider_endpoint: true
+  cost_tracking: false
+  track_cost_per_token: false
 '''
     with open(config_file, 'w') as f:
         f.write(config_content)
