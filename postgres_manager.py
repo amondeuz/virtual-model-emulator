@@ -112,36 +112,6 @@ class PostgreSQLManager:
         # Check if already running
         if self.is_running():
             print('[OK] PostgreSQL already running', flush=True)
-            return True
-            
-        # Disable WAL replication in postgresql.conf to prevent crashes on Windows
-        config_file = self.data_dir / 'postgresql.conf'
-        if config_file.exists():
-            content = config_file.read_text()
-            modified = False
-        
-            # Fix wal_level
-            if 'wal_level = replica' in content:
-                content = content.replace('wal_level = replica', 'wal_level = minimal')
-                modified = True
-            elif 'wal_level = minimal' not in content:
-                content += '\nwal_level = minimal\n'
-                modified = True
-            
-            # Fix max_wal_senders
-            if 'max_wal_senders = ' in content and 'max_wal_senders = 0' not in content:
-                # Comment out any existing max_wal_senders line
-                lines = content.split('\n')
-                content = '\n'.join([f'#{line}' if line.startswith('max_wal_senders = ') else line for line in lines])
-                modified = True
-            
-            if 'max_wal_senders = 0' not in content:
-                content += 'max_wal_senders = 0\n'
-                modified = True
-        
-            if modified:
-                config_file.write_text(content)
-                print('[OK] Disabled WAL replication in postgresql.conf', flush=True)
                 
         # Check if port is available, try to find open port if needed
         if is_port_in_use(self.port):
@@ -157,6 +127,7 @@ class PostgreSQLManager:
                 return False
 
         # Start server
+        # Start server
         try:
             print('[INFO] Starting PostgreSQL server...', flush=True)
             subprocess.Popen([
@@ -164,7 +135,7 @@ class PostgreSQLManager:
                 '-D', str(self.data_dir.resolve()),
                 '-l', str(self.log_file.resolve()),
                 '-o', f'-p {self.port} -c max_wal_senders=0 -c wal_level=minimal'
-            ])
+            ], creationflags=subprocess.CREATE_NEW_PROCESS_GROUP)
             print('[OK] PostgreSQL started', flush=True)
 
         except subprocess.TimeoutExpired:
@@ -274,6 +245,7 @@ class PostgreSQLManager:
         except Exception as e:
             print(f'[WARN] Database creation failed: {e}', flush=True)
             return False
+
 
 
 
