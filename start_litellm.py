@@ -44,6 +44,55 @@ def is_litellm_ready(host='127.0.0.1', port=None, timeout=30):
     return False
 
 
+def generate_prisma_client():
+    """Generate Prisma client from litellm_proxy_extras package directory.
+    
+    CRITICAL: The Prisma schema is inside the litellm_proxy_extras package,
+    not in the app directory. We must run `prisma generate` from that directory.
+    
+    Returns:
+        bool: True if successful, False if failed
+    """
+    print('[INFO] Generating Prisma client...', flush=True)
+    
+    # Find litellm_proxy_extras package location
+    try:
+        import litellm_proxy_extras
+        package_dir = litellm_proxy_extras.__path__[0]
+        print(f'[INFO] Found litellm_proxy_extras at: {package_dir}', flush=True)
+    except ImportError:
+        print('[ERROR] litellm_proxy_extras not found - LiteLLM may not be properly installed', flush=True)
+        return False
+    except Exception as e:
+        print(f'[ERROR] Failed to find litellm_proxy_extras: {e}', flush=True)
+        return False
+    
+    # Run prisma generate from that directory
+    try:
+        print('[INFO] Running prisma generate...', flush=True)
+        result = subprocess.run(
+            [sys.executable, '-m', 'prisma', 'generate'],
+            cwd=package_dir,
+            capture_output=True,
+            text=True,
+            timeout=60
+        )
+        
+        if result.returncode == 0:
+            print('[OK] Prisma client generated successfully', flush=True)
+            return True
+        else:
+            print(f'[ERROR] prisma generate failed: {result.stderr[:500]}', flush=True)
+            return False
+            
+    except subprocess.TimeoutExpired:
+        print('[ERROR] prisma generate timed out (>60 seconds)', flush=True)
+        return False
+    except Exception as e:
+        print(f'[ERROR] prisma generate error: {e}', flush=True)
+        return False
+
+
 def main():
     # Load .env file
     print('[INFO] Loading .env file...', flush=True)
@@ -65,19 +114,10 @@ def main():
     # Get LiteLLM port from .env (defaults to 11435)
     litellm_port = env_vars.get('LITELLM_PORT', '11435')
     print(f'[INFO] Using LiteLLM port {litellm_port}', flush=True)
-    # DEBUG: Verify what we actually loaded
-    print(f'[DEBUG] DATABASE_URL value: {database_url}', flush=True)
-    print(f'[DEBUG] DATABASE_URL in env_vars: {"DATABASE_URL" in env_vars}', flush=True)
-    if "DATABASE_URL" in env_vars:
-        print(f'[DEBUG] DATABASE_URL from env_vars: {env_vars["DATABASE_URL"]}', flush=True)
 
-    # Prisma setup is handled automatically by LiteLLM on first startup
+    # PostgreSQL verification
     if 'postgresql' in database_url.lower():
         print('[INFO] Using PostgreSQL database', flush=True)
-        print('[INFO] Prisma client will be generated automatically by LiteLLM', flush=True)
-        print('[INFO] Note: First startup may be slow while Prisma generates the database client', flush=True)
-
-        # Verify PostgreSQL is ready before starting LiteLLM
         print('[INFO] Verifying PostgreSQL is accepting connections...', flush=True)
         pg = PostgreSQLManager()
         if not pg.wait_for_ready(timeout=30):
@@ -86,6 +126,13 @@ def main():
             print('[ERROR] Check if PostgreSQL started correctly (see postgres/logfile)', flush=True)
             sys.exit(1)
         print('[OK] PostgreSQL is ready', flush=True)
+
+    # CRITICAL: Generate Prisma client BEFORE starting LiteLLM
+    print('[INFO] Preparing Prisma database client...', flush=True)
+    if not generate_prisma_client():
+        print('[ERROR] Failed to generate Prisma client', flush=True)
+        print('[ERROR] LiteLLM cannot start without it', flush=True)
+        sys.exit(1)
 
     print('[INFO] Starting LiteLLM...', flush=True)
 
@@ -191,7 +238,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-
-
-
