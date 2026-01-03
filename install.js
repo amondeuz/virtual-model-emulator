@@ -30,6 +30,8 @@ result = run_command(f'"{sys.executable}" -m pip install "prisma>=0.11.0"', "Ins
 if result.returncode != 0:
     run_command(f'"{sys.executable}" -m pip install --break-system-packages "prisma>=0.11.0"', "Installing prisma>=0.11.0 (with --break-system-packages)")
 print('[OK] Dependencies installed.')
+# Generate Prisma client
+run_command(f'"{sys.executable}" -m prisma generate', "Generating Prisma client")
 
 # 2. INSTALL POSTGRESQL (Windows)
 print('\\n[2/5] Installing PostgreSQL...')
