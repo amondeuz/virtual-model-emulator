@@ -1,0 +1,24 @@
+{
+  "name": "virtual-model-emulator",
+  "version": "2.1.4",
+  "description": "OpenAI-compatible endpoint powered by LiteLLM proxy. Supports 9 AI providers with true model name emulation via PostgreSQL database.",
+  "main": "app_launcher.py",
+  "scripts": {
+    "start": "python app_launcher.py"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/amondeuz/virtual-model-emulator"
+  },
+  "keywords": [
+    "llm",
+    "ai",
+    "openai",
+    "anthropic",
+    "litellm",
+    "emulator",
+    "proxy"
+  ],
+  "author": "",
+  "license": "MIT"
+}

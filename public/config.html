@@ -613,18 +613,100 @@
         });
     }
 
-    // Tab visibility refresh
-    document.addEventListener('visibilitychange', function() {
-      if (!document.hidden) {
-        fetchState(false).then(function(state) {
-          accounts = state.accounts || [];
-          providers = state.providers || [];
-          populateAccounts();
-          populateProviders();
-          refreshHealth();
+    // ============================================================
+    // TAB SYNCHRONIZATION - Refresh when user switches tabs
+    // ============================================================
+
+    (function() {
+        'use strict';
+
+        console.log('[INFO] Initializing cross-tab synchronization');
+
+        // Track account count to detect changes
+        var lastAccountCount = (accounts || []).length;
+
+        // Method 1: Visibility Change (when user switches to this tab)
+        document.addEventListener('visibilitychange', function() {
+            if (!document.hidden) {
+                console.log('[INFO] Tab became visible - refreshing accounts and status');
+
+                fetchState(true).then(function(state) {
+                    if (state.accounts) {
+                        accounts = state.accounts;
+                        populateAccounts();
+                    }
+                    if (state.providers) {
+                        providers = state.providers;
+                        populateProviders();
+                    }
+                    refreshHealth();
+                }).catch(function(err) {
+                    console.warn('[WARN] Failed to refresh on tab visibility:', err);
+                });
+            }
         });
-      }
-    });
+
+        // Method 2: BroadcastChannel (real-time updates from connect.html)
+        function setupBroadcastListener() {
+            try {
+                var bc = new BroadcastChannel('vme_accounts');
+                bc.onmessage = function(event) {
+                    if (event.data.type === 'accounts_updated') {
+                        console.log('[INFO] Account update received from connect.html');
+                        fetchState(true).then(function(state) {
+                            if (state.accounts) {
+                                accounts = state.accounts;
+                                populateAccounts();
+                            }
+                            if (state.providers) {
+                                providers = state.providers;
+                                populateProviders();
+                            }
+                        });
+                    }
+                };
+                console.log('[OK] BroadcastChannel listener active');
+            } catch (e) {
+                console.warn('[WARN] BroadcastChannel not supported, using polling fallback');
+                setupPollingFallback();
+            }
+        }
+
+        // Method 3: Polling fallback (every 10 seconds)
+        function setupPollingFallback() {
+            setInterval(function() {
+                fetch('/providers/accounts')
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        var currentAccountCount = (data || []).length;
+                        if (currentAccountCount !== lastAccountCount) {
+                            console.log('[INFO] Account count changed - refreshing');
+                            lastAccountCount = currentAccountCount;
+                            fetchState(true).then(function(state) {
+                                if (state.accounts) {
+                                    accounts = state.accounts;
+                                    populateAccounts();
+                                }
+                                if (state.providers) {
+                                    providers = state.providers;
+                                    populateProviders();
+                                }
+                            });
+                        }
+                    })
+                    .catch(function(err) {
+                        console.warn('[WARN] Polling check failed:', err);
+                    });
+            }, 10000);
+        }
+
+        // Start the appropriate listener
+        if (typeof BroadcastChannel !== 'undefined') {
+            setupBroadcastListener();
+        } else {
+            setupPollingFallback();
+        }
+    })();
 
     // Event listeners
     accountSelect.addEventListener('change', function() {
