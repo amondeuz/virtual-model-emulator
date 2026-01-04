@@ -151,6 +151,8 @@ def main():
         process_env = os.environ.copy()
         process_env.update(env_vars)
         process_env['PYTHONIOENCODING'] = 'utf-8'
+        process_env['PYTHONUTF8'] = '1'  # Fix Windows charmap encoding warnings
+        process_env['LITELLM_DISABLE_COST_TRACKING'] = 'true'  # Disable enterprise cost checking
         
         process = subprocess.Popen(
             [
