@@ -137,7 +137,6 @@ def main():
     print('[INFO] Starting LiteLLM...', flush=True)
 
     # Start LiteLLM with proper logging
-    # CRITICAL: Don't capture output - let it stream to console so we see errors
     try:
         # Create log file for debugging
         log_file = 'litellm_startup.log'
@@ -152,7 +151,10 @@ def main():
         process_env.update(env_vars)
         process_env['PYTHONIOENCODING'] = 'utf-8'
         process_env['PYTHONUTF8'] = '1'  # Fix Windows charmap encoding warnings
-        process_env['LITELLM_DISABLE_COST_TRACKING'] = 'true'  # Disable enterprise cost checking
+        
+        # DEBUG: Print environment vars being passed to subprocess
+        print(f'[DEBUG] PYTHONUTF8={process_env.get("PYTHONUTF8")}', flush=True)
+        print(f'[DEBUG] PYTHONIOENCODING={process_env.get("PYTHONIOENCODING")}', flush=True)
         
         process = subprocess.Popen(
             [
