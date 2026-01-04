@@ -30,6 +30,39 @@ result = run_command(f'"{sys.executable}" -m pip install "prisma>=0.11.0"', "Ins
 if result.returncode != 0:
     run_command(f'"{sys.executable}" -m pip install --break-system-packages "prisma>=0.11.0"', "Installing prisma>=0.11.0 (with --break-system-packages)")
 print('[OK] Dependencies installed.')
+
+# PATCH: Fix missing litellm_enterprise import
+print('\\n[PATCH] Patching litellm_enterprise import error...')
+try:
+    import litellm_proxy_extras
+    pkg_dir = os.path.dirname(litellm_proxy_extras.__file__)
+    proxy_server_path = os.path.join(pkg_dir, 'proxy_server.py')
+    
+    if os.path.exists(proxy_server_path):
+        with open(proxy_server_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        # Check if already patched
+        if 'except ImportError:' not in content or 'litellm_enterprise.proxy.common_utils.check_responses_cost' not in content:
+            search_str = "from litellm_enterprise.proxy.common_utils import check_responses_cost"
+            if search_str in content:
+                replacement = """try:
+    from litellm_enterprise.proxy.common_utils import check_responses_cost
+except ImportError:
+    check_responses_cost = None"""
+                patched_content = content.replace(search_str, replacement)
+                with open(proxy_server_path, 'w', encoding='utf-8') as f:
+                    f.write(patched_content)
+                print('[OK] Patched litellm_enterprise import - will fail silently if missing')
+            else:
+                print('[WARNING] Could not find exact import string to patch')
+        else:
+            print('[OK] Already patched')
+    else:
+        print('[WARNING] proxy_server.py not found - patch skipped')
+except Exception as e:
+    print(f'[WARNING] Patch failed (non-fatal): {e}')
+
 # NOTE: Prisma client generation happens in start_litellm.py, not here
 # (Schema is inside litellm_proxy_extras package, not app directory)
 
