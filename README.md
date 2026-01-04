@@ -1,4 +1,4 @@
-# Virtual Model Emulator v2.1.2
+# Virtual Model Emulator v2.1.3
 
 A Pinokio app that provides a local OpenAI-compatible HTTP endpoint with **true model name emulation** powered by LiteLLM proxy server and PostgreSQL database. Route any model name to any provider - make Pinokio apps think they're talking to one model while actually using another.
 
@@ -10,7 +10,7 @@ A **model name emulator** that translates model names for Pinokio applications. 
 
 **New to LiteLLM?** LiteLLM is an open-source library that provides a unified interface to 100+ AI providers (OpenAI, Anthropic, Google, etc.). This app uses LiteLLM as its routing engine - you don't need to know LiteLLM to use this app, but advanced users can leverage its full capabilities.
 
-## Features (v2.1.2)
+## Features (v2.1.3)
 
 ### ✅ What Works
 

@@ -18,7 +18,7 @@ def run_command(cmd, desc=""):
     return result
 
 print('='*60)
-print('Virtual Model Emulator v2.1.2 - Installation')
+print('Virtual Model Emulator v2.1.3 - Installation')
 print('='*60)
 
 # 1. INSTALL/UPGRADE DEPENDENCIES
