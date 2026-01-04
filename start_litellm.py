@@ -161,12 +161,45 @@ def main():
         print(f'[DEBUG] Current PID: {os.getpid()}', flush=True)
         print('========================', flush=True)
         
+        # Create wrapper script to inject litellm_enterprise mock before LiteLLM starts
+        wrapper_script = f'''
+import sys
+import types
+
+# Inject dummy litellm_enterprise modules to prevent ImportError
+dummy_module = types.ModuleType("litellm_enterprise")
+sys.modules["litellm_enterprise"] = dummy_module
+
+dummy_proxy = types.ModuleType("proxy")
+sys.modules["litellm_enterprise.proxy"] = dummy_proxy
+
+dummy_utils = types.ModuleType("common_utils")
+dummy_utils.check_responses_cost = None
+sys.modules["litellm_enterprise.proxy.common_utils"] = dummy_utils
+
+# Set up sys.argv for litellm CLI
+sys.argv = [
+    "litellm",
+    "--config", "config.yaml",
+    "--port", "{litellm_port}",
+    "--host", "127.0.0.1"
+]
+
+# Now start litellm proxy via CLI
+from litellm.proxy.proxy_cli import run_server
+run_server()
+'''
+        
+        # Write wrapper to temporary file
+        with open('_litellm_wrapper.py', 'w') as f:
+            f.write(wrapper_script)
+        
+        print('[INFO] Injecting litellm_enterprise mock...', flush=True)
+        
         process = subprocess.Popen(
             [
-                'litellm',
-                '--config', 'config.yaml',
-                '--port', str(litellm_port),
-                '--host', '127.0.0.1'
+                sys.executable,
+                '_litellm_wrapper.py'
             ],
             env=process_env,  # ← Merged environment - CRITICAL
             stdout=subprocess.PIPE,
@@ -243,6 +276,13 @@ def main():
     except Exception as e:
         print(f'[ERROR] LiteLLM failed: {e}', flush=True)
         sys.exit(1)
+    finally:
+        # Clean up wrapper script
+        if os.path.exists('_litellm_wrapper.py'):
+            try:
+                os.remove('_litellm_wrapper.py')
+            except:
+                pass
 
 
 if __name__ == '__main__':
