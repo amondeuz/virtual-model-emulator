@@ -1,327 +1,191 @@
-"""Unified launcher for Virtual Model Emulator.
-
-This is the single entry point that Pinokio monitors. It starts all services
-and keeps them alive until shutdown.
+"""
+Virtual Model Emulator - Unified Service Launcher
+Starts all services under a single parent process that Pinokio monitors.
 """
 import os
+import sys
+import time
 import signal
 import subprocess
-import sys
 import threading
-import time
+from pathlib import Path
 
-from env_loader import load_env
-
-# Global shutdown flag
-shutdown_requested = False
+services = {}  # {name: process_object}
 stop_event = threading.Event()
-
-# Track child processes
-processes = {}
 
 
 def signal_handler(sig, frame):
     """Handle shutdown signals gracefully."""
-    global shutdown_requested
-    print(f'\n[INFO] Received signal {sig}, initiating shutdown...', flush=True)
-    shutdown_requested = True
+    print(f'\n[INFO] Received signal {sig} - shutting down', flush=True)
     stop_event.set()
 
 
-def get_creation_flags():
-    """Get subprocess creation flags for Windows process isolation."""
-    if sys.platform == 'win32':
-        return subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
-    return 0
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
 
 
-def get_process_env():
-    """Get environment variables for subprocesses."""
+def setup_environment():
+    """Prepare environment for all subprocesses."""
     env = os.environ.copy()
-    env.update({
-        'PYTHONUTF8': '1',
-        'PYTHONIOENCODING': 'utf-8',
-        'PYTHONLEGACYWINDOWSSTDIO': '1'
-    })
+
+    # Critical Windows encoding settings
+    env['PYTHONIOENCODING'] = 'utf-8'
+    env['PYTHONUTF8'] = '1'
+    env['PYTHONLEGACYWINDOWSSTDIO'] = '0'
+
+    # Load .env if available
+    try:
+        sys.path.insert(0, str(Path(__file__).parent))
+        from env_loader import load_env
+        env_vars = load_env()
+        env.update(env_vars)
+    except Exception as e:
+        print(f'[WARN] Failed to load .env: {e}', flush=True)
+
     return env
 
 
-def stream_output(process, name, ready_event=None, ready_pattern=None):
-    """Stream subprocess output to console using non-blocking reads.
+def stream_output_in_background(process, service_name):
+    """Read process output in background thread (prevents deadlock)."""
+    def read_output():
+        try:
+            while not stop_event.is_set():
+                if process.poll() is not None:
+                    # Process exited, read remaining
+                    try:
+                        remaining = process.stdout.read()
+                        if remaining:
+                            for line in remaining.splitlines():
+                                if line.strip():
+                                    print(f'[{service_name}] {line}', flush=True)
+                    except:
+                        pass
+                    break
 
-    CRITICAL: Uses read() instead of readline() to avoid Windows deadlock.
-    Windows pipe buffers are only 4KB. If subprocess writes faster than parent
-    reads, and we're waiting for a newline that doesn't come, the pipe fills
-    and both processes deadlock.
-
-    Args:
-        process: The subprocess to stream from
-        name: Name for logging prefix
-        ready_event: Optional threading.Event to set when ready_pattern is found
-        ready_pattern: Pattern that indicates service is ready
-    """
-    buffer = ""
-
-    try:
-        while not stop_event.is_set():
-            # Check if process has exited
-            if process.poll() is not None:
-                # Process died, read any remaining buffered output
+                # Read available data (non-blocking)
                 try:
-                    remaining = process.stdout.read()
-                    if remaining:
-                        for line in remaining.splitlines():
+                    chunk = process.stdout.read(1024)
+                    if chunk:
+                        for line in chunk.splitlines():
                             if line.strip():
-                                print(f'[{name}] {line}', flush=True)
-                                if ready_event and ready_pattern and ready_pattern in line:
-                                    ready_event.set()
+                                print(f'[{service_name}] {line}', flush=True)
+                    else:
+                        time.sleep(0.1)
+                except (BlockingIOError, ValueError):
+                    time.sleep(0.1)
                 except Exception:
-                    pass
-                break
+                    break
+        finally:
+            pass
 
-            # Read available data in chunks (non-blocking style)
-            try:
-                # Read a chunk of data - this is safer than readline()
-                chunk = process.stdout.read(4096)
-                if chunk:
-                    buffer += chunk
-                    # Process complete lines
-                    while '\n' in buffer:
-                        line, buffer = buffer.split('\n', 1)
-                        if line.strip():
-                            print(f'[{name}] {line.rstrip()}', flush=True)
-                            if ready_event and ready_pattern and ready_pattern in line:
-                                ready_event.set()
-                else:
-                    # No data available, small sleep to avoid busy loop
-                    time.sleep(0.05)
-            except (BlockingIOError, ValueError):
-                # Pipe closed or other issue
-                time.sleep(0.05)
-
-    except Exception as e:
-        print(f'[ERROR] {name} stream error: {e}', flush=True)
-    finally:
-        # Print any remaining buffered content
-        if buffer.strip():
-            print(f'[{name}] {buffer.rstrip()}', flush=True)
+    thread = threading.Thread(target=read_output, daemon=True)
+    thread.start()
 
 
-def start_service(name, command, ready_pattern=None, timeout=60):
-    """Start a service and wait for it to be ready.
+def start_service(script_name, service_name, env):
+    """Start a service subprocess."""
+    script_path = Path(__file__).parent / script_name
 
-    Args:
-        name: Service name for logging
-        command: Command to run (list of strings)
-        ready_pattern: Pattern in output that indicates service is ready
-        timeout: Maximum seconds to wait for ready pattern
+    if not script_path.exists():
+        print(f'[ERROR] {script_name} not found', flush=True)
+        return None
 
-    Returns:
-        subprocess.Popen: The process object, or None on failure
-    """
-    print(f'[INFO] Starting {name}...', flush=True)
+    print(f'[INFO] Starting {service_name}...', flush=True)
+
+    creation_flags = 0
+    if sys.platform == 'win32':
+        creation_flags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
 
     try:
         process = subprocess.Popen(
-            command,
-            env=get_process_env(),
+            [sys.executable, str(script_path)],
+            env=env,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
             bufsize=1,
-            creationflags=get_creation_flags()
+            creationflags=creation_flags
         )
 
-        processes[name] = process
+        stream_output_in_background(process, service_name)
 
-        if ready_pattern:
-            ready_event = threading.Event()
+        # Give service time to fail fast
+        time.sleep(3)
+        if process.poll() is not None:
+            print(f'[ERROR] {service_name} exited immediately', flush=True)
+            return None
 
-            # Start output streaming thread
-            stream_thread = threading.Thread(
-                target=stream_output,
-                args=(process, name, ready_event, ready_pattern),
-                daemon=True
-            )
-            stream_thread.start()
-
-            # Wait for ready signal
-            if not ready_event.wait(timeout=timeout):
-                # Check if process died
-                if process.poll() is not None:
-                    print(f'[ERROR] {name} exited with code {process.poll()}', flush=True)
-                    return None
-                print(f'[WARN] {name} did not signal ready within {timeout}s, continuing...', flush=True)
-        else:
-            # Start output streaming thread without ready check
-            stream_thread = threading.Thread(
-                target=stream_output,
-                args=(process, name),
-                daemon=True
-            )
-            stream_thread.start()
-
-        print(f'[OK] {name} started (PID: {process.pid})', flush=True)
+        print(f'[OK] {service_name} started', flush=True)
+        services[service_name] = process
         return process
 
     except Exception as e:
-        print(f'[ERROR] Failed to start {name}: {e}', flush=True)
+        print(f'[ERROR] Failed to start {service_name}: {e}', flush=True)
         return None
 
 
-def cleanup_processes():
-    """Terminate all child processes gracefully."""
-    print('[INFO] Cleaning up processes...', flush=True)
+def monitor_services():
+    """Monitor all services continuously."""
+    while not stop_event.is_set():
+        for service_name, process in list(services.items()):
+            if process and process.poll() is not None:
+                print(f'[ERROR] {service_name} exited', flush=True)
 
-    for name, process in processes.items():
+        time.sleep(5)
+
+
+def shutdown_services():
+    """Gracefully shutdown all services."""
+    print('[INFO] Shutting down services...', flush=True)
+
+    for service_name in reversed(list(services.keys())):
+        process = services.get(service_name)
         if process and process.poll() is None:
-            print(f'[INFO] Stopping {name}...', flush=True)
+            print(f'[INFO] Stopping {service_name}...', flush=True)
             try:
                 process.terminate()
-                try:
-                    process.wait(timeout=10)
-                    print(f'[OK] {name} stopped', flush=True)
-                except subprocess.TimeoutExpired:
-                    print(f'[WARN] {name} not responding, forcing...', flush=True)
-                    process.kill()
-                    process.wait()
-                    print(f'[OK] {name} killed', flush=True)
-            except Exception as e:
-                print(f'[ERROR] Failed to stop {name}: {e}', flush=True)
-
-    processes.clear()
-
-
-def monitor_processes():
-    """Monitor running processes and report any failures."""
-    while not stop_event.is_set():
-        for name, process in list(processes.items()):
-            if process and process.poll() is not None:
-                exit_code = process.poll()
-                print(f'[ERROR] {name} exited unexpectedly with code {exit_code}', flush=True)
-
-                # Critical service failure - trigger shutdown
-                if name in ['PostgreSQL', 'LiteLLM']:
-                    print(f'[ERROR] Critical service {name} failed, shutting down...', flush=True)
-                    stop_event.set()
-                    return
-
-        # Check every second
-        time.sleep(1)
+                process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
 
 
 def main():
-    """Main entry point - starts all services and monitors them."""
-    global shutdown_requested
+    print('[INFO] Virtual Model Emulator v2.1.2 - Unified Launcher', flush=True)
 
-    # Set up signal handlers
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
+    env = setup_environment()
 
-    print('[INFO] Virtual Model Emulator starting...', flush=True)
-
-    # Load environment
-    print('[INFO] Loading environment...', flush=True)
-    try:
-        env_vars = load_env()
-        # Update current process environment
-        os.environ.update(env_vars)
-        print('[OK] Environment loaded', flush=True)
-    except SystemExit:
-        print('[ERROR] Failed to load environment', flush=True)
+    # Start services in order
+    if not start_service('start_postgres.py', 'PostgreSQL', env):
+        shutdown_services()
         sys.exit(1)
 
-    # Validate configuration
-    print('[INFO] Validating configuration...', flush=True)
-    validate_proc = start_service(
-        'Validate',
-        [sys.executable, 'validate_config.py'],
-        ready_pattern='Environment validated',
-        timeout=30
-    )
+    time.sleep(2)
 
-    if validate_proc is None:
-        print('[ERROR] Configuration validation failed', flush=True)
-        cleanup_processes()
+    if not start_service('start_litellm.py', 'LiteLLM', env):
+        shutdown_services()
         sys.exit(1)
 
-    # Wait for validation to complete
-    validate_proc.wait()
-    if validate_proc.returncode != 0:
-        print('[ERROR] Configuration validation failed', flush=True)
-        cleanup_processes()
-        sys.exit(1)
+    time.sleep(2)
 
-    del processes['Validate']  # Remove from tracking
-    print('[OK] Configuration validated', flush=True)
+    if not start_service('server.py', 'API Server', env):
+        print('[WARN] API Server failed', flush=True)
 
-    # Start PostgreSQL
-    postgres_proc = start_service(
-        'PostgreSQL',
-        [sys.executable, 'start_postgres.py'],
-        ready_pattern='PostgreSQL ready',
-        timeout=60
-    )
+    print('[OK] All services started successfully', flush=True)
 
-    if postgres_proc is None:
-        print('[ERROR] Failed to start PostgreSQL', flush=True)
-        cleanup_processes()
-        sys.exit(1)
-
-    # Give PostgreSQL a moment to fully initialize
-    time.sleep(1)
-
-    # Start LiteLLM
-    litellm_proc = start_service(
-        'LiteLLM',
-        [sys.executable, 'start_litellm.py'],
-        ready_pattern='Uvicorn running',
-        timeout=120
-    )
-
-    if litellm_proc is None:
-        print('[ERROR] Failed to start LiteLLM', flush=True)
-        cleanup_processes()
-        sys.exit(1)
-
-    # Give LiteLLM a moment to fully initialize
-    time.sleep(1)
-
-    # Start API Server
-    server_proc = start_service(
-        'APIServer',
-        [sys.executable, 'server.py'],
-        ready_pattern='http://localhost:',
-        timeout=30
-    )
-
-    if server_proc is None:
-        print('[ERROR] Failed to start API Server', flush=True)
-        cleanup_processes()
-        sys.exit(1)
-
-    # All services started successfully
-    print('', flush=True)
-    print('=' * 50, flush=True)
-    print('All services started successfully', flush=True)
-    print('=' * 50, flush=True)
-    print('', flush=True)
-    print('[INFO] Entering monitoring mode - press Ctrl+C to stop', flush=True)
-
-    # Start monitoring thread
-    monitor_thread = threading.Thread(target=monitor_processes, daemon=True)
+    # Start monitoring
+    monitor_thread = threading.Thread(target=monitor_services, daemon=True)
     monitor_thread.start()
 
-    # Main loop - keep running until shutdown
+    # Wait for shutdown
     try:
         while not stop_event.is_set():
-            time.sleep(0.5)
+            time.sleep(1)
     except KeyboardInterrupt:
-        print('\n[INFO] Keyboard interrupt received', flush=True)
+        print('\n[INFO] Keyboard interrupt', flush=True)
     finally:
-        print('[INFO] Shutting down...', flush=True)
-        cleanup_processes()
-        print('[INFO] Shutdown complete', flush=True)
+        shutdown_services()
+        print('[INFO] Launcher exiting', flush=True)
 
 
 if __name__ == '__main__':
