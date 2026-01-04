@@ -166,15 +166,19 @@ def main():
 import sys
 import types
 
-# Inject dummy litellm_enterprise modules to prevent ImportError
+# Create properly-structured dummy enterprise modules as packages
 dummy_module = types.ModuleType("litellm_enterprise")
+dummy_module.__path__ = []
 sys.modules["litellm_enterprise"] = dummy_module
 
 dummy_proxy = types.ModuleType("proxy")
+dummy_proxy.__path__ = []
 sys.modules["litellm_enterprise.proxy"] = dummy_proxy
 
 dummy_utils = types.ModuleType("common_utils")
+dummy_utils.__path__ = []
 dummy_utils.check_responses_cost = None
+dummy_utils.check_batch_cost = None
 sys.modules["litellm_enterprise.proxy.common_utils"] = dummy_utils
 
 # Set up sys.argv for litellm CLI
