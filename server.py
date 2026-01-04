@@ -693,17 +693,57 @@ def check_litellm_health(max_retries=3, retry_delay=2):
 
 
 def main():
-    # Check LiteLLM health before starting server
-    print("[INFO] Checking LiteLLM status...", flush=True)
-    if not check_litellm_health():
-        print("[WARN] LiteLLM is not responding. API calls may fail.", flush=True)
-        print("[WARN] Make sure LiteLLM is running (check start.js logs).", flush=True)
-    else:
-        print("[OK] LiteLLM is running", flush=True)
+    """Start API server - output URL immediately, do health check in background."""
+    import os
+    import signal
+    import errno
+    import sys
+    import time
 
-    with socketserver.TCPServer(("127.0.0.1", PORT), APIHandler) as httpd:
-        print(f"http://localhost:{PORT}/config.html", flush=True)
-        httpd.serve_forever()
+    # Ensure required directories exist
+    PUBLIC_DIR.mkdir(parents=True, exist_ok=True)
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Get port from environment
+    port = int(os.environ.get('API_SERVER_PORT', 8775))
+
+    # Windows signal handling
+    if sys.platform == 'win32':
+        def signal_handler(sig, frame):
+            print(f'[INFO] Received signal {sig}, shutting down...', flush=True)
+            sys.exit(0)
+
+        signal.signal(signal.SIGTERM, signal_handler)
+        signal.signal(signal.SIGINT, signal_handler)
+
+    # Start HTTP server IMMEDIATELY
+    try:
+        with socketserver.TCPServer(("127.0.0.1", port), APIHandler) as httpd:
+            # CRITICAL: Output URL immediately (required for app_launcher.py ready detection)
+            print(f"http://localhost:{port}/config.html", flush=True)
+
+            # Health check in background (non-blocking)
+            def health_check_background():
+                time.sleep(2)  # Give LiteLLM time to start
+                print("[INFO] Checking LiteLLM health...", flush=True)
+                if not check_litellm_health():
+                    print("[WARN] LiteLLM not responding yet", flush=True)
+                else:
+                    print("[OK] LiteLLM is running", flush=True)
+
+            health_thread = threading.Thread(target=health_check_background, daemon=True)
+            health_thread.start()
+
+            # Start server (blocks here until shutdown)
+            print(f"[INFO] API server started on port {port}", flush=True)
+            httpd.serve_forever()
+
+    except OSError as e:
+        if e.errno == errno.EADDRINUSE:
+            print(f"[ERROR] Port {port} is already in use", flush=True)
+            sys.exit(1)
+        raise
+
 
 if __name__ == "__main__":
     main()
