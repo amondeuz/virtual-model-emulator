@@ -664,6 +664,26 @@
       });
     }
 
+    // After successful account save, notify config.html
+    function broadcastAccountUpdate() {
+        try {
+            if (typeof BroadcastChannel !== 'undefined') {
+                var bc = new BroadcastChannel('vme_accounts');
+                bc.postMessage({ type: 'accounts_updated' });
+                bc.close();
+                console.log('[OK] Account update broadcast sent');
+            }
+        } catch (e) {
+            console.warn('[WARN] BroadcastChannel notification failed:', e);
+        }
+
+        try {
+            localStorage.setItem('vme_account_update', Date.now().toString());
+        } catch (e) {
+            console.warn('[WARN] localStorage notification failed:', e);
+        }
+    }
+
     function saveAccount() {
       // Prevent double-submission
       if (isSaving) return;
@@ -711,6 +731,7 @@
           var providerInfo = getProviderInfo(provider);
           showStatus('Successfully added "' + accountName + '" for ' + providerInfo.name, 'success');
           loadAccounts();
+          broadcastAccountUpdate();
         } else {
           showStatus(result.data.error || 'Failed to save account', 'error');
         }
