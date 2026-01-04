@@ -17,7 +17,7 @@ def find_open_port(start_port=5450, max_attempts=100):
 
     CRITICAL FIX: Increased max_attempts from 10 to 100
     This allows searching ports 5450-5550 instead of just 5432-5441.
-    When v2.0.0 and v2.1.2 run together, this prevents "all ports in use" errors.
+    When multiple versions run together, this prevents "all ports in use" errors.
 
     Args:
         start_port: Port to start checking from

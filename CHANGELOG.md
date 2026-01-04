@@ -1,5 +1,38 @@
 # Changelog
 
+## [2.1.3] - 2026-01-04
+
+### Fixed - Windows Stability and Architecture Improvements
+
+**Critical Windows fixes:**
+- Fixed pipe buffer deadlock in `app_launcher.py` that caused hanging on Windows
+  - Windows pipe buffers are only 4KB; `readline()` could block indefinitely
+  - Now uses non-blocking chunk reads with proper buffer management
+- Removed wrapper script approach in `start_litellm.py`
+  - Previously generated `_litellm_wrapper.py` on disk (fragile, race conditions)
+  - Now mocks `litellm_enterprise` modules in-process using `sys.modules`
+
+**URL parsing improvements:**
+- Use `urllib.parse` for DATABASE_URL port extraction instead of fragile regex
+- Properly handles all URL formats including query parameters
+
+**Unified launcher architecture (PR #56):**
+- Single `app_launcher.py` entry point for Pinokio
+- All services (PostgreSQL, LiteLLM, API Server) managed as subprocesses
+- Proper signal handling and graceful shutdown
+- Background threads for non-blocking output streaming
+
+**PostgreSQL improvements:**
+- Extended port scanning range (5450-5550) to avoid conflicts
+- Windows process isolation flags for cleaner subprocess management
+- Process object storage for reliable shutdown
+
+**LiteLLM startup improvements:**
+- LiteLLM port now correctly reads from .env file (LITELLM_PORT)
+- Better error handling and startup verification
+
+---
+
 ## [2.1.2] - 2026-01-01
 
 ### Fixed - Installation State Consistency
