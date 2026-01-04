@@ -1,6 +1,7 @@
 """PostgreSQL lifecycle management."""
 import os
 import subprocess
+import sys
 import time
 
 from postgres_config import (
@@ -42,6 +43,7 @@ class PostgreSQLManager:
         self.host = PG_HOST
         self.database = PG_DATABASE
         self._env = None
+        self.process = None  # Store process object for clean shutdown
 
     @property
     def pg_env(self):
@@ -75,21 +77,26 @@ class PostgreSQLManager:
             return False
 
     def wait_for_ready(self, timeout=30):
-        """Wait for PostgreSQL to accept connections."""
-        import time
+        """Wait for PostgreSQL to accept connections via TCP socket."""
+        import socket
         start = time.time()
-        
+
         while time.time() - start < timeout:
-            # Just check if port is accepting connections
-            # Don't use pg_isready - it has auth issues
-            if not is_port_in_use(self.port):
-                # Port opened but not listening yet, wait a bit
-                time.sleep(0.5)
-                continue
-            
-            # Port is listening - that means PostgreSQL is accepting connections
-            return True
-        
+            try:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(1)
+                result = sock.connect_ex((self.host, self.port))
+                sock.close()
+                if result == 0:
+                    print(f'[OK] PostgreSQL accepting connections on {self.host}:{self.port}', flush=True)
+                    time.sleep(0.5)  # Give it a moment to fully initialize
+                    return True
+            except Exception:
+                pass
+
+            time.sleep(0.5)
+
+        print(f'[ERROR] PostgreSQL not accepting connections on {self.host}:{self.port} after {timeout}s', flush=True)
         return False
 
     def start(self, timeout=30):
@@ -127,15 +134,15 @@ class PostgreSQLManager:
                 return False
 
         # Start server
-        # Start server
         try:
             print('[INFO] Starting PostgreSQL server...', flush=True)
-            subprocess.Popen([
+            creation_flags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0
+            self.process = subprocess.Popen([
                 str(PG_CTL.resolve()), 'start',
                 '-D', str(self.data_dir.resolve()),
                 '-l', str(self.log_file.resolve()),
                 '-o', f'-p {self.port}'
-            ], stdin=subprocess.DEVNULL, creationflags=subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW)
+            ], stdin=subprocess.DEVNULL, creationflags=creation_flags)
             print('[OK] PostgreSQL started', flush=True)
 
         except subprocess.TimeoutExpired:
@@ -167,6 +174,24 @@ class PostgreSQLManager:
         """
         print('[INFO] Stopping PostgreSQL...', flush=True)
 
+        # Try to use stored process object first
+        if self.process is not None:
+            try:
+                self.process.terminate()
+                self.process.wait(timeout=10)
+                print('[OK] PostgreSQL stopped', flush=True)
+                self.process = None
+                return True
+            except subprocess.TimeoutExpired:
+                self.process.kill()
+                self.process.wait()
+                print('[OK] PostgreSQL stopped (forced)', flush=True)
+                self.process = None
+                return True
+            except Exception as e:
+                print(f'[WARN] Failed via process: {e}', flush=True)
+
+        # Fallback to pg_ctl method
         try:
             result = subprocess.run([
                 str(PG_CTL.resolve()), 'stop',
