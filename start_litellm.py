@@ -116,6 +116,7 @@ def main():
     print(f'[INFO] Using LiteLLM port {litellm_port}', flush=True)
 
     # PostgreSQL verification
+    pg_port = None
     if 'postgresql' in database_url.lower():
         print('[INFO] Using PostgreSQL database', flush=True)
         print('[INFO] Verifying PostgreSQL is accepting connections...', flush=True)
@@ -126,6 +127,18 @@ def main():
             print('[ERROR] Check if PostgreSQL started correctly (see postgres/logfile)', flush=True)
             sys.exit(1)
         print('[OK] PostgreSQL is ready', flush=True)
+        
+        # CRITICAL: Get actual port PostgreSQL is using (may not be 5450)
+        pg_port = pg.port
+        print(f'[INFO] PostgreSQL is using port {pg_port}', flush=True)
+        
+        # Update DATABASE_URL with actual PostgreSQL port if it differs
+        if f':{pg_port}' not in database_url:
+            # Extract original port and replace with actual port
+            import re
+            database_url = re.sub(r':5450/', f':{pg_port}/', database_url)
+            database_url = re.sub(r':5432/', f':{pg_port}/', database_url)
+            print(f'[INFO] Updated DATABASE_URL to use port {pg_port}', flush=True)
 
     # CRITICAL: Generate Prisma client BEFORE starting LiteLLM
     print('[INFO] Preparing Prisma database client...', flush=True)
@@ -268,8 +281,15 @@ run_server()
         print('[OK] LiteLLM is ready', flush=True)
         print('[OK] Uvicorn running', flush=True)  # Signal for Pinokio
         
-        # Keep the process running
-        process.wait()
+        # CRITICAL: Exit cleanly - Pinokio expects the launcher script to exit after successful startup
+        # The subprocess (LiteLLM) continues running independently
+        print('[INFO] Server startup successful. Exiting launcher script.', flush=True)
+        
+        # Save subprocess PID for future reference
+        with open('litellm_server.pid', 'w') as f:
+            f.write(str(process.pid))
+        
+        sys.exit(0)  # Clean exit signals success to Pinokio
 
     except KeyboardInterrupt:
         print('[INFO] LiteLLM stopped', flush=True)
