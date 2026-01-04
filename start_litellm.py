@@ -151,10 +151,15 @@ def main():
         process_env.update(env_vars)
         process_env['PYTHONIOENCODING'] = 'utf-8'
         process_env['PYTHONUTF8'] = '1'  # Fix Windows charmap encoding warnings
+        process_env['PYTHONLEGACYWINDOWSSTDIO'] = '1'  # Additional Windows encoding fix
         
         # DEBUG: Print environment vars being passed to subprocess
+        print('=== ENVIRONMENT DUMP ===', flush=True)
         print(f'[DEBUG] PYTHONUTF8={process_env.get("PYTHONUTF8")}', flush=True)
         print(f'[DEBUG] PYTHONIOENCODING={process_env.get("PYTHONIOENCODING")}', flush=True)
+        print(f'[DEBUG] PYTHONLEGACYWINDOWSSTDIO={process_env.get("PYTHONLEGACYWINDOWSSTDIO")}', flush=True)
+        print(f'[DEBUG] Current PID: {os.getpid()}', flush=True)
+        print('========================', flush=True)
         
         process = subprocess.Popen(
             [
@@ -163,7 +168,7 @@ def main():
                 '--port', str(litellm_port),
                 '--host', '127.0.0.1'
             ],
-            env=process_env,  # ← Merged environment
+            env=process_env,  # ← Merged environment - CRITICAL
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
