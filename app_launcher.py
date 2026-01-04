@@ -47,7 +47,12 @@ def get_process_env():
 
 
 def stream_output(process, name, ready_event=None, ready_pattern=None):
-    """Stream subprocess output to console.
+    """Stream subprocess output to console using non-blocking reads.
+
+    CRITICAL: Uses read() instead of readline() to avoid Windows deadlock.
+    Windows pipe buffers are only 4KB. If subprocess writes faster than parent
+    reads, and we're waiting for a newline that doesn't come, the pipe fills
+    and both processes deadlock.
 
     Args:
         process: The subprocess to stream from
@@ -55,19 +60,51 @@ def stream_output(process, name, ready_event=None, ready_pattern=None):
         ready_event: Optional threading.Event to set when ready_pattern is found
         ready_pattern: Pattern that indicates service is ready
     """
-    try:
-        for line in iter(process.stdout.readline, ''):
-            if not line:
-                break
-            line = line.rstrip()
-            print(f'[{name}] {line}', flush=True)
+    buffer = ""
 
-            # Check for ready pattern
-            if ready_event and ready_pattern and ready_pattern in line:
-                ready_event.set()
+    try:
+        while not stop_event.is_set():
+            # Check if process has exited
+            if process.poll() is not None:
+                # Process died, read any remaining buffered output
+                try:
+                    remaining = process.stdout.read()
+                    if remaining:
+                        for line in remaining.splitlines():
+                            if line.strip():
+                                print(f'[{name}] {line}', flush=True)
+                                if ready_event and ready_pattern and ready_pattern in line:
+                                    ready_event.set()
+                except Exception:
+                    pass
+                break
+
+            # Read available data in chunks (non-blocking style)
+            try:
+                # Read a chunk of data - this is safer than readline()
+                chunk = process.stdout.read(4096)
+                if chunk:
+                    buffer += chunk
+                    # Process complete lines
+                    while '\n' in buffer:
+                        line, buffer = buffer.split('\n', 1)
+                        if line.strip():
+                            print(f'[{name}] {line.rstrip()}', flush=True)
+                            if ready_event and ready_pattern and ready_pattern in line:
+                                ready_event.set()
+                else:
+                    # No data available, small sleep to avoid busy loop
+                    time.sleep(0.05)
+            except (BlockingIOError, ValueError):
+                # Pipe closed or other issue
+                time.sleep(0.05)
 
     except Exception as e:
         print(f'[ERROR] {name} stream error: {e}', flush=True)
+    finally:
+        # Print any remaining buffered content
+        if buffer.strip():
+            print(f'[{name}] {buffer.rstrip()}', flush=True)
 
 
 def start_service(name, command, ready_pattern=None, timeout=60):
