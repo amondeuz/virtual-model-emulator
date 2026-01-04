@@ -213,6 +213,7 @@ run_server()
         
         print('[INFO] Injecting litellm_enterprise mock...', flush=True)
         
+        creation_flags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0
         process = subprocess.Popen(
             [
                 sys.executable,
@@ -222,7 +223,8 @@ run_server()
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
-            bufsize=1
+            bufsize=1,
+            creationflags=creation_flags
         )
 
         print('[INFO] LiteLLM process started, waiting for startup...', flush=True)
@@ -280,19 +282,33 @@ run_server()
 
         print('[OK] LiteLLM is ready', flush=True)
         print('[OK] Uvicorn running', flush=True)  # Signal for Pinokio
-        
-        # CRITICAL: Exit cleanly - Pinokio expects the launcher script to exit after successful startup
-        # The subprocess (LiteLLM) continues running independently
-        print('[INFO] Server startup successful. Exiting launcher script.', flush=True)
-        
+        print('[INFO] Entering monitoring mode - will stay running', flush=True)
+
         # Save subprocess PID for future reference
         with open('litellm_server.pid', 'w') as f:
             f.write(str(process.pid))
-        
-        sys.exit(0)  # Clean exit signals success to Pinokio
 
-    except KeyboardInterrupt:
-        print('[INFO] LiteLLM stopped', flush=True)
+        # Monitor until exit or signal
+        try:
+            while True:
+                if process.poll() is not None:
+                    exit_code = process.poll()
+                    print(f'[ERROR] LiteLLM process exited with code {exit_code}', flush=True)
+                    remaining = process.stdout.read()
+                    if remaining:
+                        print(f'[ERROR] LiteLLM output: {remaining[:500]}', flush=True)
+                    sys.exit(exit_code)
+                time.sleep(2)
+        except KeyboardInterrupt:
+            print('\n[INFO] Shutdown signal received', flush=True)
+            if process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait()
+
     except FileNotFoundError:
         print('[ERROR] LiteLLM command not found. Is it installed?', flush=True)
         print('[ERROR] Try: pip install litellm[proxy]', flush=True)
