@@ -13,8 +13,6 @@ import urllib.error
 import uuid
 from pathlib import Path
 
-PORT = 8775
-
 # Get LiteLLM port from .env file (defaults to 11435)
 try:
     from env_loader import load_env
