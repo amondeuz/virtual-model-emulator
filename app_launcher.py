@@ -51,15 +51,25 @@ def setup_environment():
 
 
 def check_postgres_ready(port=None):
-    """Check if PostgreSQL is accepting connections on the specified port."""
-    import socket
+    """Check if PostgreSQL is accepting database connections."""
     port = port or PG_PORT
     try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(1)
-        result = sock.connect_ex(('127.0.0.1', port))
-        sock.close()
-        return result == 0
+        # Try to connect with psycopg2 if available, fall back to socket
+        try:
+            import psycopg2
+            conn = psycopg2.connect(
+                f"host=127.0.0.1 port={port} user=postgres connect_timeout=2"
+            )
+            conn.close()
+            return True
+        except ImportError:
+            # Fallback: just check if port is listening
+            import socket
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(2)
+            result = sock.connect_ex(('127.0.0.1', port))
+            sock.close()
+            return result == 0
     except Exception:
         return False
 
@@ -118,37 +128,20 @@ def wait_for_service_ready(service_name, check_func, timeout=30):
 
 
 def stream_output_in_background(process, service_name):
-    """Read process output in background thread (prevents deadlock)."""
+    """Read process output line by line in background thread (prevents deadlock)."""
     def read_output():
         try:
-            while not stop_event.is_set():
-                if process.poll() is not None:
-                    # Process exited, read remaining
-                    try:
-                        remaining = process.stdout.read()
-                        if remaining:
-                            for line in remaining.splitlines():
-                                if line.strip():
-                                    print(f'[{service_name}] {line}', flush=True)
-                    except:
-                        pass
+            # Use iter() for clean line-by-line reading
+            for line in iter(process.stdout.readline, ''):
+                if stop_event.is_set():
                     break
-
-                # Read available data (non-blocking)
-                try:
-                    chunk = process.stdout.read(1024)
-                    if chunk:
-                        for line in chunk.splitlines():
-                            if line.strip():
-                                print(f'[{service_name}] {line}', flush=True)
-                    else:
-                        time.sleep(0.1)
-                except (BlockingIOError, ValueError):
-                    time.sleep(0.1)
-                except Exception:
-                    break
-        finally:
+                if line.strip():  # Skip empty lines
+                    print(f'[{service_name}] {line.rstrip()}', flush=True)
+        except (ValueError, OSError):
+            # Process closed stdout
             pass
+        except Exception as e:
+            print(f'[WARN] Output stream error for {service_name}: {e}', flush=True)
 
     thread = threading.Thread(target=read_output, daemon=True)
     thread.start()
