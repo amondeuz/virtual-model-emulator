@@ -11,6 +11,46 @@ sys.path.insert(0, str(Path(__file__).parent))
 shutdown_requested = False
 
 
+def generate_prisma_client():
+    """Generate Prisma client from litellm_proxy_extras package.
+
+    This is required for LiteLLM to connect to PostgreSQL properly.
+    The Prisma client needs to be generated from the package's schema.
+    """
+    try:
+        import litellm_proxy_extras
+        package_dir = os.path.dirname(litellm_proxy_extras.__file__)
+
+        print(f'[INFO] Generating Prisma client from {package_dir}...', flush=True)
+
+        result = subprocess.run(
+            [sys.executable, '-m', 'prisma', 'generate'],
+            cwd=package_dir,
+            capture_output=True,
+            text=True,
+            timeout=60
+        )
+
+        if result.returncode == 0:
+            print('[OK] Prisma client generated successfully', flush=True)
+            return True
+        else:
+            print(f'[WARN] Prisma generation returned code {result.returncode}', flush=True)
+            if result.stderr:
+                print(f'[DEBUG] Prisma stderr: {result.stderr[:500]}', flush=True)
+            return False
+
+    except ImportError:
+        print('[WARN] litellm_proxy_extras not installed, skipping Prisma generation', flush=True)
+        return True  # Not a failure - package may not be needed
+    except subprocess.TimeoutExpired:
+        print('[WARN] Prisma generation timed out', flush=True)
+        return False
+    except Exception as e:
+        print(f'[WARN] Prisma generation failed: {e}', flush=True)
+        return False
+
+
 def signal_handler(sig, frame):
     """Handle shutdown signals."""
     global shutdown_requested
@@ -64,6 +104,10 @@ def main():
     if not config_file.exists():
         print(f'[ERROR] config.yaml not found', flush=True)
         sys.exit(1)
+
+    # Generate Prisma client before starting LiteLLM
+    if not generate_prisma_client():
+        print('[WARN] Continuing despite Prisma generation issues', flush=True)
 
     print('[INFO] Starting LiteLLM proxy...', flush=True)
 

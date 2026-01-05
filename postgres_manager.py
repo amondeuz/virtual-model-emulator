@@ -109,11 +109,16 @@ class PostgreSQLManager:
             return False
 
     def wait_for_ready(self, timeout=30):
-        """Wait for PostgreSQL to accept connections."""
+        """Wait for PostgreSQL to accept connections.
+
+        Note: We check the 'postgres' database which always exists, not
+        the target database which may not be created yet.
+        """
         start_time = time.time()
 
         while time.time() - start_time < timeout:
             # Method 1: Try pg_isready (most accurate)
+            # Use 'postgres' database which always exists, not self.database
             if PG_ISREADY.exists():
                 try:
                     result = subprocess.run([
@@ -121,7 +126,7 @@ class PostgreSQLManager:
                         '-h', self.host,
                         '-p', str(self.port),
                         '-U', self.user,
-                        '-d', self.database
+                        '-d', 'postgres'  # Check default database, not litellm
                     ], capture_output=True, text=True, timeout=2, env=self.pg_env)
 
                     if result.returncode == 0:
@@ -175,6 +180,23 @@ class PostgreSQLManager:
 
         if self.port != PG_PORT_DEFAULT:
             print(f'[INFO] Port {PG_PORT_DEFAULT} in use, using {self.port}', flush=True)
+
+        # Update environment variables for other services to use the correct port
+        os.environ['PG_PORT'] = str(self.port)
+
+        # Update DATABASE_URL if it contains the old port
+        if 'DATABASE_URL' in os.environ:
+            try:
+                from env_loader import update_database_url_port
+                old_url = os.environ['DATABASE_URL']
+                new_url = update_database_url_port(old_url, self.port)
+                if new_url != old_url:
+                    os.environ['DATABASE_URL'] = new_url
+                    print(f'[INFO] DATABASE_URL updated to use port {self.port}', flush=True)
+            except ImportError:
+                print('[WARN] env_loader not available, DATABASE_URL not updated', flush=True)
+            except Exception as e:
+                print(f'[WARN] Failed to update DATABASE_URL: {e}', flush=True)
 
         # Windows-specific flags
         creation_flags = 0

@@ -13,6 +13,11 @@ from pathlib import Path
 services = {}  # {name: process_object}
 stop_event = threading.Event()
 
+# Default ports
+PG_PORT = int(os.environ.get('PG_PORT', 5450))
+LITELLM_PORT = int(os.environ.get('LITELLM_PORT', 11435))
+API_SERVER_PORT = int(os.environ.get('API_SERVER_PORT', 8775))
+
 
 def signal_handler(sig, frame):
     """Handle shutdown signals gracefully."""
@@ -43,6 +48,73 @@ def setup_environment():
         print(f'[WARN] Failed to load .env: {e}', flush=True)
 
     return env
+
+
+def check_postgres_ready(port=None):
+    """Check if PostgreSQL is accepting connections on the specified port."""
+    import socket
+    port = port or PG_PORT
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(1)
+        result = sock.connect_ex(('127.0.0.1', port))
+        sock.close()
+        return result == 0
+    except Exception:
+        return False
+
+
+def check_litellm_ready(port=None):
+    """Check if LiteLLM /health endpoint responds."""
+    import urllib.request
+    port = port or LITELLM_PORT
+    try:
+        response = urllib.request.urlopen(f'http://127.0.0.1:{port}/health', timeout=2)
+        return response.getcode() == 200
+    except Exception:
+        return False
+
+
+def check_server_ready(port=None):
+    """Check if API server is responding."""
+    import urllib.request
+    port = port or API_SERVER_PORT
+    try:
+        response = urllib.request.urlopen(f'http://127.0.0.1:{port}/', timeout=2)
+        return response.getcode() == 200
+    except Exception:
+        return False
+
+
+def wait_for_service_ready(service_name, check_func, timeout=30):
+    """Wait for a service to be ready using a check function.
+
+    Args:
+        service_name: Name of the service (for logging)
+        check_func: Function that returns True if service is ready
+        timeout: Maximum seconds to wait
+
+    Returns:
+        bool: True if service became ready, False if timeout
+    """
+    print(f'[INFO] Waiting for {service_name} to be ready...', flush=True)
+
+    start = time.time()
+    while time.time() - start < timeout:
+        if stop_event.is_set():
+            return False
+
+        try:
+            if check_func():
+                print(f'[OK] {service_name} is ready', flush=True)
+                return True
+        except Exception:
+            pass
+
+        time.sleep(1)
+
+    print(f'[ERROR] {service_name} not ready after {timeout}s', flush=True)
+    return False
 
 
 def stream_output_in_background(process, service_name):
@@ -151,7 +223,7 @@ def shutdown_services():
 
 
 def main():
-    print('[INFO] Virtual Model Emulator v2.1.2 - Unified Launcher', flush=True)
+    print('[INFO] Virtual Model Emulator v2.1.5 - Unified Launcher', flush=True)
 
     env = setup_environment()
 
@@ -171,7 +243,28 @@ def main():
     if not start_service('server.py', 'API Server', env):
         print('[WARN] API Server failed', flush=True)
 
-    print('[OK] All services started successfully', flush=True)
+    # Verify all services are actually ready
+    print('\n[INFO] Verifying service readiness...', flush=True)
+
+    all_ready = True
+    service_checks = [
+        ('PostgreSQL', check_postgres_ready, 30),
+        ('LiteLLM', check_litellm_ready, 45),  # LiteLLM takes longer to start
+        ('API Server', check_server_ready, 15)
+    ]
+
+    for service_name, check_func, timeout in service_checks:
+        if not wait_for_service_ready(service_name, check_func, timeout):
+            all_ready = False
+            print(f'[WARN] {service_name} is not responding', flush=True)
+
+    if all_ready:
+        print('\n' + '=' * 50, flush=True)
+        print('[OK] All services started and verified', flush=True)
+        print('=' * 50, flush=True)
+    else:
+        print('\n[WARN] Some services may not be fully ready', flush=True)
+        print('[INFO] The application will continue running', flush=True)
 
     # Start monitoring
     monitor_thread = threading.Thread(target=monitor_services, daemon=True)
