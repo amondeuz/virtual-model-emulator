@@ -76,6 +76,13 @@ print('='*60)
       }
     },
     {
+      method: "fs.write",
+      params: {
+        path: "config.yaml",
+        text: "# Virtual Model Emulator Configuration\n# Master key will be auto-generated on first run\n# Do not share this file - it contains your encryption key\n"
+      }
+    },
+    {
       method: "shell.run",
       params: {
         venv: "env",

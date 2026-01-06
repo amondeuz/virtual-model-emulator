@@ -18,7 +18,7 @@ module.exports = {
       method: "shell.run",
       params: {
         venv: "env",
-        message: "python -m pip install --upgrade litellm[proxy] prisma"
+        message: "python -m pip install --upgrade litellm"
       }
     },
     {
