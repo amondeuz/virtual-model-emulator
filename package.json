@@ -1,7 +1,7 @@
 {
   "name": "virtual-model-emulator",
-  "version": "2.1.4",
-  "description": "OpenAI-compatible endpoint powered by LiteLLM proxy. Supports 9 AI providers with true model name emulation via PostgreSQL database.",
+  "version": "2.2.0",
+  "description": "OpenAI-compatible endpoint powered by LiteLLM SDK. Supports 100+ AI providers with model name emulation.",
   "main": "app_launcher.py",
   "scripts": {
     "start": "python app_launcher.py"
