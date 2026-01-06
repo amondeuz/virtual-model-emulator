@@ -1,6 +1,6 @@
 """
-Virtual Model Emulator - Unified Service Launcher
-Starts all services under a single parent process that Pinokio monitors.
+Virtual Model Emulator - Simplified Launcher
+Starts only the API server (uses LiteLLM SDK directly, no proxy or database needed).
 """
 import os
 import sys
@@ -13,9 +13,7 @@ from pathlib import Path
 services = {}  # {name: process_object}
 stop_event = threading.Event()
 
-# Default ports
-PG_PORT = int(os.environ.get('PG_PORT', 5450))
-LITELLM_PORT = int(os.environ.get('LITELLM_PORT', 11435))
+# Default port
 API_SERVER_PORT = int(os.environ.get('API_SERVER_PORT', 8775))
 
 
@@ -38,7 +36,7 @@ def setup_environment():
     env['PYTHONUTF8'] = '1'
     env['PYTHONLEGACYWINDOWSSTDIO'] = '0'
 
-    # Load .env if available
+    # Load .env if available (for API_SERVER_PORT, etc.)
     try:
         sys.path.insert(0, str(Path(__file__).parent))
         from env_loader import load_env
@@ -48,41 +46,6 @@ def setup_environment():
         print(f'[WARN] Failed to load .env: {e}', flush=True)
 
     return env
-
-
-def check_postgres_ready(port=None):
-    """Check if PostgreSQL is accepting database connections."""
-    port = port or PG_PORT
-    try:
-        # Try to connect with psycopg2 if available, fall back to socket
-        try:
-            import psycopg2
-            conn = psycopg2.connect(
-                f"host=127.0.0.1 port={port} user=postgres connect_timeout=2"
-            )
-            conn.close()
-            return True
-        except ImportError:
-            # Fallback: just check if port is listening
-            import socket
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(2)
-            result = sock.connect_ex(('127.0.0.1', port))
-            sock.close()
-            return result == 0
-    except Exception:
-        return False
-
-
-def check_litellm_ready(port=None):
-    """Check if LiteLLM /health endpoint responds."""
-    import urllib.request
-    port = port or LITELLM_PORT
-    try:
-        response = urllib.request.urlopen(f'http://127.0.0.1:{port}/health', timeout=2)
-        return response.getcode() == 200
-    except Exception:
-        return False
 
 
 def check_server_ready(port=None):
@@ -97,16 +60,7 @@ def check_server_ready(port=None):
 
 
 def wait_for_service_ready(service_name, check_func, timeout=30):
-    """Wait for a service to be ready using a check function.
-
-    Args:
-        service_name: Name of the service (for logging)
-        check_func: Function that returns True if service is ready
-        timeout: Maximum seconds to wait
-
-    Returns:
-        bool: True if service became ready, False if timeout
-    """
+    """Wait for a service to be ready using a check function."""
     print(f'[INFO] Waiting for {service_name} to be ready...', flush=True)
 
     start = time.time()
@@ -131,14 +85,12 @@ def stream_output_in_background(process, service_name):
     """Read process output line by line in background thread (prevents deadlock)."""
     def read_output():
         try:
-            # Use iter() for clean line-by-line reading
             for line in iter(process.stdout.readline, ''):
                 if stop_event.is_set():
                     break
-                if line.strip():  # Skip empty lines
+                if line.strip():
                     print(f'[{service_name}] {line.rstrip()}', flush=True)
         except (ValueError, OSError):
-            # Process closed stdout
             pass
         except Exception as e:
             print(f'[WARN] Output stream error for {service_name}: {e}', flush=True)
@@ -175,7 +127,7 @@ def start_service(script_name, service_name, env):
         stream_output_in_background(process, service_name)
 
         # Give service time to fail fast
-        time.sleep(3)
+        time.sleep(2)
         if process.poll() is not None:
             print(f'[ERROR] {service_name} exited immediately', flush=True)
             return None
@@ -216,48 +168,30 @@ def shutdown_services():
 
 
 def main():
-    print('[INFO] Virtual Model Emulator v2.1.5 - Unified Launcher', flush=True)
+    print('[INFO] Virtual Model Emulator v3.0.0 - SDK Mode (No Proxy)', flush=True)
+    print('[INFO] Architecture: API Server → LiteLLM SDK → Provider APIs', flush=True)
 
     env = setup_environment()
 
-    # Start services in order
-    if not start_service('start_postgres.py', 'PostgreSQL', env):
-        shutdown_services()
-        sys.exit(1)
-
-    time.sleep(2)
-
-    if not start_service('start_litellm.py', 'LiteLLM', env):
-        shutdown_services()
-        sys.exit(1)
-
-    time.sleep(2)
-
+    # Start only the API server (it uses LiteLLM SDK directly)
     if not start_service('server.py', 'API Server', env):
-        print('[WARN] API Server failed', flush=True)
+        print('[ERROR] API Server failed to start', flush=True)
+        shutdown_services()
+        sys.exit(1)
 
-    # Verify all services are actually ready
+    # Verify service is ready
     print('\n[INFO] Verifying service readiness...', flush=True)
 
-    all_ready = True
-    service_checks = [
-        ('PostgreSQL', check_postgres_ready, 30),
-        ('LiteLLM', check_litellm_ready, 45),  # LiteLLM takes longer to start
-        ('API Server', check_server_ready, 15)
-    ]
+    if not wait_for_service_ready('API Server', check_server_ready, 15):
+        print('[ERROR] API Server is not responding', flush=True)
+        shutdown_services()
+        sys.exit(1)
 
-    for service_name, check_func, timeout in service_checks:
-        if not wait_for_service_ready(service_name, check_func, timeout):
-            all_ready = False
-            print(f'[WARN] {service_name} is not responding', flush=True)
-
-    if all_ready:
-        print('\n' + '=' * 50, flush=True)
-        print('[OK] All services started and verified', flush=True)
-        print('=' * 50, flush=True)
-    else:
-        print('\n[WARN] Some services may not be fully ready', flush=True)
-        print('[INFO] The application will continue running', flush=True)
+    print('\n' + '=' * 50, flush=True)
+    print('[OK] All services started and verified', flush=True)
+    print('=' * 50, flush=True)
+    print(f'[INFO] Web UI: http://localhost:{API_SERVER_PORT}/config.html', flush=True)
+    print('[INFO] Emulator uses LiteLLM SDK directly - no proxy needed!', flush=True)
 
     # Start monitoring
     monitor_thread = threading.Thread(target=monitor_services, daemon=True)

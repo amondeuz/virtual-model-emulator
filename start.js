@@ -6,7 +6,7 @@ module.exports = {
       params: {
         venv: "env",
         message: "python app_launcher.py",
-        on: [{ event: "/All services started successfully/", done: true }]
+        on: [{ event: "/All services started and verified/", done: true }]
       }
     },
     {
