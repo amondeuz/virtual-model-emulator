@@ -11,6 +11,14 @@ import time
 from pathlib import Path
 from cryptography.fernet import Fernet
 import yaml
+import gzip
+import logging
+import traceback
+import time
+from typing import Dict, List, Optional, Tuple, Any
+from collections import defaultdict
+from datetime import datetime
+from cryptography.fernet import Fernet
 
 # Import LiteLLM SDK
 try:
@@ -27,6 +35,193 @@ CONFIG_DIR = BASE_DIR / "config"
 CONFIG_FILE = CONFIG_DIR / "config.yaml"
 ACCOUNTS_FILE = CONFIG_DIR / "accounts.json"
 EMULATIONS_FILE = CONFIG_DIR / "emulations.json"
+
+# AUDIT LOGGING
+audit_log_file = CONFIG_DIR / "audit.log"
+audit_logger = logging.getLogger('audit')
+audit_handler = logging.FileHandler(audit_log_file)
+audit_handler.setFormatter(logging.Formatter(
+    '%(asctime)s | %(levelname)s | %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+))
+audit_logger.addHandler(audit_handler)
+audit_logger.setLevel(logging.INFO)
+
+# ERROR LOGGING
+error_log_file = CONFIG_DIR / "errors.log"
+error_logger = logging.getLogger('errors')
+error_handler = logging.FileHandler(error_log_file)
+error_handler.setFormatter(logging.Formatter(
+    '%(asctime)s | %(levelname)s | %(funcName)s | %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+))
+error_logger.addHandler(error_handler)
+error_logger.setLevel(logging.ERROR)
+
+class ModelCache:
+    """Cache provider model lists with 1-hour TTL"""
+    def __init__(self, ttl_seconds=3600):
+        self.cache = {}
+        self.ttl = ttl_seconds
+
+    def get(self, provider: str) -> Optional[List[Dict]]:
+        if provider not in self.cache:
+            return None
+        cached = self.cache[provider]
+        age = time.time() - cached['timestamp']
+        if age > self.ttl:
+            del self.cache[provider]
+            return None
+        return cached['models']
+
+    def set(self, provider: str, models: List[Dict]) -> None:
+        self.cache[provider] = {
+            'models': models,
+            'timestamp': time.time()
+        }
+
+    def invalidate(self, provider: Optional[str] = None) -> None:
+        if provider:
+            self.cache.pop(provider, None)
+        else:
+            self.cache.clear()
+
+    def stats(self) -> Dict[str, Any]:
+        return {
+            'cached_providers': len(self.cache),
+            'entries': {p: len(v['models']) for p, v in self.cache.items()}
+        }
+
+class CachedFallback:
+    """Fall back to stale cache if provider is down"""
+    def __init__(self):
+        self.stale_cache = {}
+
+    def save_stale(self, provider: str, models: List[Dict]) -> None:
+        self.stale_cache[provider] = {
+            'models': models,
+            'timestamp': time.time()
+        }
+
+    def get_stale(self, provider: str) -> Optional[List[Dict]]:
+        return self.stale_cache.get(provider, {}).get('models')
+
+    def age_minutes(self, provider: str) -> Optional[int]:
+        if provider not in self.stale_cache:
+            return None
+        age_seconds = time.time() - self.stale_cache[provider]['timestamp']
+        return int(age_seconds / 60)
+
+class RateLimiter:
+    """Simple rate limiter for API endpoints"""
+    def __init__(self, requests_per_second=10):
+        self.requests_per_second = requests_per_second
+        self.requests = defaultdict(list)
+
+    def is_allowed(self, client_ip: str) -> bool:
+        now = time.time()
+        window_start = now - 1.0
+        self.requests[client_ip] = [
+            ts for ts in self.requests[client_ip] if ts > window_start
+        ]
+        if len(self.requests[client_ip]) >= self.requests_per_second:
+            return False
+        self.requests[client_ip].append(now)
+        return True
+
+def log_audit(action: str, provider: str, account_name: str, success: bool, details: str = "") -> None:
+    """Log security-relevant actions"""
+    status = "SUCCESS" if success else "FAILED"
+    msg = f"{action} | Provider={provider} | Account={account_name} | {status}"
+    if details:
+        msg += f" | {details}"
+    audit_logger.info(msg)
+
+def log_error(error: Exception, context: Dict[str, Any], action: str) -> None:
+    """Log error with structured context"""
+    error_logger.error(
+        f"{action} | Error={type(error).__name__} | "
+        f"Message={str(error)[:100]} | "
+        f"Context={json.dumps(context, default=str)}"
+    )
+
+def should_retry(error: Exception) -> bool:
+    """Determine if error is transient and retryable"""
+    error_str = str(error).lower()
+    transient_patterns = [
+        'timeout', 'connection', 'rate limit', 'temporarily unavailable',
+        '502', '503', '504'
+    ]
+    return any(pattern in error_str for pattern in transient_patterns)
+
+def call_with_retry(func, *args, max_attempts: int = 3, base_delay: float = 1.0, **kwargs) -> Any:
+    """Call function with exponential backoff retry"""
+    last_error = None
+    for attempt in range(max_attempts):
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            last_error = e
+            if not should_retry(e):
+                raise
+            if attempt == max_attempts - 1:
+                raise
+            delay = base_delay * (2 ** attempt) + __import__('random').uniform(0, 1)
+            print(f"[WARN] Retrying (attempt {attempt + 1}/{max_attempts}): delay={delay:.1f}s", flush=True)
+            time.sleep(delay)
+    raise last_error
+
+class MasterKeyRotation:
+    """Handle master key rotation without losing data"""
+    def __init__(self, config_file, accounts_file):
+        self.config_file = config_file
+        self.accounts_file = accounts_file
+
+    def rotate_key(self) -> bool:
+        """Rotate to new master key, re-encrypt all accounts"""
+        try:
+            with open(self.config_file, 'r') as f:
+                config = yaml.safe_load(f) or {}
+
+            old_key = config.get('master_key')
+            if not old_key:
+                raise ValueError("No previous master key found")
+
+            old_cipher = Fernet(old_key.encode())
+            accounts = json.loads(self.accounts_file.read_text())
+
+            for acc in accounts:
+                if 'apiKey' in acc:
+                    try:
+                        decrypted = old_cipher.decrypt(acc['apiKey'].encode()).decode()
+                        acc['apiKey'] = decrypted
+                    except Exception:
+                        print(f"[WARN] Failed to decrypt key for {acc['accountName']}", flush=True)
+
+            new_key = Fernet.generate_key().decode()
+            new_cipher = Fernet(new_key.encode())
+
+            for acc in accounts:
+                if 'apiKey' in acc:
+                    acc['apiKey'] = new_cipher.encrypt(acc['apiKey'].encode()).decode()
+
+            config['master_key'] = new_key
+            config['key_rotated_at'] = time.time()
+
+            with open(self.config_file, 'w') as f:
+                yaml.dump(config, f)
+
+            self.accounts_file.write_text(json.dumps(accounts, indent=2))
+            print(f"[OK] Master key rotated successfully", flush=True)
+            return True
+        except Exception as e:
+            print(f"[ERROR] Key rotation failed: {e}", flush=True)
+            return False
+
+model_cache = ModelCache(ttl_seconds=3600)
+stale_fallback = CachedFallback()
+rate_limiter = RateLimiter(requests_per_second=10)
+key_rotation = MasterKeyRotation(CONFIG_FILE, ACCOUNTS_FILE)
 
 # Thread-safe lock for emulation operations
 _emulation_lock = threading.Lock()
@@ -220,11 +415,26 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
         super().__init__(*args, directory=str(PUBLIC_DIR), **kwargs)
 
     def send_json(self, data, status=200):
+        json_str = json.dumps(data)
+        json_bytes = json_str.encode()
+
+        # Compress if > 1KB
+        if len(json_bytes) > 1024:
+            compressed = gzip.compress(json_bytes)
+            if len(compressed) < len(json_bytes):
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Encoding", "gzip")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(compressed)
+                return
+
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
-        self.wfile.write(json.dumps(data).encode())
+        self.wfile.write(json_bytes)
 
     def read_json_body(self):
         """Read and parse JSON body from request."""
@@ -249,6 +459,14 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
         import urllib.parse
         global _active_emulations
+
+        # Rate limiting
+        client_ip = self.client_address[0]
+        if not rate_limiter.is_allowed(client_ip):
+            self.send_json({"error": "Rate limit exceeded. Max 10 req/s"}, 429)
+            log_audit("RATE_LIMIT_EXCEEDED", "", "", False, f"IP={client_ip}")
+            return
+
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
         query = urllib.parse.parse_qs(parsed.query)
@@ -310,13 +528,20 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
 
         elif path == "/models":
             provider = query.get("provider", [""])[0]
+            force = query.get("force", ["false"])[0].lower() == "true"
 
             if not provider:
                 self.send_json({"error": "provider parameter required"}, 400)
                 return
 
+            # Check cache first (unless force=true)
+            if not force:
+                cached_models = model_cache.get(provider)
+                if cached_models is not None:
+                    self.send_json({"models": cached_models, "cached": True})
+                    return
+
             try:
-                # Get API key for this provider
                 api_key = find_api_key_for_provider(provider)
                 if not api_key:
                     self.send_json({
@@ -325,13 +550,15 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
                     }, 400)
                     return
 
-                # Use LiteLLM SDK to get models live
-                models_list = litellm.get_model_list(
+                # Fetch with retry
+                models_list = call_with_retry(
+                    litellm.get_model_list,
                     custom_llm_provider=provider,
-                    api_key=api_key
+                    api_key=api_key,
+                    max_attempts=3,
+                    base_delay=1.0
                 )
 
-                # Format for frontend
                 formatted_models = []
                 prov = get_provider_by_id(provider)
                 for model_id in models_list:
@@ -343,15 +570,36 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
                     })
 
                 formatted_models.sort(key=lambda m: m.get("label", "").lower())
-                self.send_json({"models": formatted_models})
+                model_cache.set(provider, formatted_models)
+                stale_fallback.save_stale(provider, formatted_models)
+                self.send_json({"models": formatted_models, "cached": False})
 
             except Exception as e:
-                # Provider offline or no models available
-                self.send_json({
-                    "error": _sanitize_error(str(e)),
-                    "offline": True,
-                    "models": []
-                }, 400)
+                # Try stale cache fallback
+                stale_models = stale_fallback.get_stale(provider)
+                if stale_models:
+                    age = stale_fallback.age_minutes(provider)
+                    context = {"provider": provider, "stale_age_minutes": age}
+                    log_error(e, context, "MODELS_FALLBACK_TO_STALE")
+                    self.send_json({
+                        "models": stale_models,
+                        "cached": True,
+                        "warning": f"Using cached data from {age} minutes ago"
+                    })
+                else:
+                    context = {"provider": provider, "endpoint": path}
+                    log_error(e, context, "MODEL_FETCH_FAILED")
+                    self.send_json({
+                        "error": _sanitize_error(str(e)),
+                        "offline": True,
+                        "models": []
+                    }, 400)
+
+        elif path == "/admin/cache-stats":
+            self.send_json({
+                "cache": model_cache.stats(),
+                "ttl_seconds": model_cache.ttl
+            })
 
         elif path == "/" or path == "":
             self.path = "/config.html"
@@ -365,6 +613,14 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
         import urllib.parse
         import uuid
         global _active_emulations
+
+        # Rate limiting
+        client_ip = self.client_address[0]
+        if not rate_limiter.is_allowed(client_ip):
+            self.send_json({"error": "Rate limit exceeded. Max 10 req/s"}, 429)
+            log_audit("RATE_LIMIT_EXCEEDED", "", "", False, f"IP={client_ip}")
+            return
+
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
 
@@ -375,6 +631,7 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
             api_key = data.get("apiKey")
 
             if not all([provider, account_name, api_key]):
+                log_audit("ACCOUNT_ADD_FAILED", provider or "", account_name or "", False, "Missing fields")
                 self.send_json({"success": False, "error": "Missing required fields"}, 400)
                 return
 
@@ -383,6 +640,7 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
             # Check for duplicate
             for acc in accounts:
                 if acc["provider"] == provider and acc["accountName"] == account_name:
+                    log_audit("ACCOUNT_ADD_FAILED", provider, account_name, False, "Already exists")
                     self.send_json({"success": False, "error": "Account already exists"}, 400)
                     return
 
@@ -394,6 +652,8 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
             }
             accounts.append(new_account)
             save_accounts(accounts)
+            model_cache.invalidate(provider)  # Invalidate cache when new account added
+            log_audit("ACCOUNT_ADDED", provider, account_name, True)
             print(f"[OK] Connected provider: {provider}/{account_name}", flush=True)
             self.send_json({"success": True})
 
@@ -405,6 +665,8 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
             accounts = load_accounts()
             accounts = [a for a in accounts if not (a["provider"] == provider and a["accountName"] == account_name)]
             save_accounts(accounts)
+            model_cache.invalidate(provider)
+            log_audit("ACCOUNT_REMOVED", provider, account_name, True)
             print(f"[OK] Disconnected provider: {provider}/{account_name}", flush=True)
             self.send_json({"success": True})
 
@@ -417,16 +679,19 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
             emulated_name = data.get("emulatedModelName", model).strip()
 
             if not provider or not model:
+                log_audit("EMULATION_START_FAILED", provider, account_name, False, "Missing provider/model")
                 self.send_json({"success": False, "error": "Provider and model required"}, 400)
                 return
 
             if not emulated_name:
+                log_audit("EMULATION_START_FAILED", provider, account_name, False, "Missing emulated name")
                 self.send_json({"success": False, "error": "Emulated model name required"}, 400)
                 return
 
             # Find API key
             api_key = find_api_key_for_provider(provider, account_name)
             if not api_key:
+                log_audit("EMULATION_START_FAILED", provider, account_name, False, "No API key")
                 self.send_json({"success": False, "error": "No API key found for provider"}, 400)
                 return
 
@@ -442,15 +707,15 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
                 "emulatedName": emulated_name,
                 "actualModel": full_model,
                 "provider": provider,
-                "apiKey": api_key  # Stored securely for SDK calls
+                "apiKey": api_key
             }
 
             with _emulation_lock:
-                # Remove existing emulation with same name (if any)
                 _active_emulations = [e for e in _active_emulations if e["emulatedName"] != emulated_name]
                 _active_emulations.append(emulation)
                 save_emulations()
 
+            log_audit("EMULATION_START", provider, account_name, True, f"Model={model}→{full_model}")
             print(f"[OK] Started emulation: {emulated_name} → {full_model}", flush=True)
             self.send_json({
                 "success": True,
@@ -503,7 +768,6 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
 
             # If no emulation found, try to use the model directly
             if not emulation:
-                # Try to find API key from provider prefix
                 for prov in PROVIDERS:
                     if requested_model.startswith(prov["prefix"]) or prov["prefix"] == "":
                         api_key = find_api_key_for_provider(prov["id"])
@@ -517,7 +781,6 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
                 return
 
             try:
-                # Use LiteLLM SDK directly
                 response = litellm.completion(
                     model=actual_model,
                     messages=messages,
@@ -527,12 +790,11 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
                     stream=False
                 )
 
-                # Return OpenAI-compatible response with emulated model name
                 result = {
                     "id": response.id,
                     "object": "chat.completion",
                     "created": response.created,
-                    "model": requested_model,  # Return the requested (emulated) model name
+                    "model": requested_model,
                     "choices": [
                         {
                             "index": 0,
@@ -553,15 +815,32 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
                 self.send_json(result)
 
             except Exception as e:
-                error_msg = str(e)
-                print(f"[ERROR] Completion failed: {error_msg}", flush=True)
+                context = {
+                    "model": requested_model,
+                    "actual_model": actual_model,
+                    "client_ip": self.client_address[0]
+                }
+                log_error(e, context, "CHAT_COMPLETION_FAILED")
                 self.send_json({
                     "error": {
-                        "message": _sanitize_error(error_msg),
+                        "message": _sanitize_error(str(e)),
                         "type": "api_error",
                         "code": "completion_error"
                     }
                 }, 500)
+
+        elif path == "/admin/rotate-key":
+            secret = self.read_json_body().get("secret")
+            if secret != os.environ.get('ADMIN_SECRET'):
+                self.send_json({"error": "Invalid admin secret"}, 403)
+                return
+
+            if key_rotation.rotate_key():
+                log_audit("KEY_ROTATION", "", "", True)
+                self.send_json({"success": True, "message": "Master key rotated"})
+            else:
+                log_audit("KEY_ROTATION", "", "", False)
+                self.send_json({"success": False, "error": "Rotation failed"}, 500)
 
         else:
             self.send_json({"error": "Not found"}, 404)

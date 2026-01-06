@@ -41,6 +41,24 @@
     .message.error { color: #ef4444; }
     .pill { display: inline-block; padding: 6px 10px; border-radius: 999px; background: #eef2f7; font-size: 12px; margin-left: 6px; }
     .hint { font-size: 12px; color: #627384; margin-top: 4px; }
+    .validation-message {
+      font-size: 12px;
+      margin-top: 4px;
+      min-height: 16px;
+      display: none;
+    }
+    .validation-message.error {
+      color: #ef4444;
+      display: block;
+    }
+    .validation-message.success {
+      color: #22c55e;
+      display: block;
+    }
+    .validation-message.warning {
+      color: #f59e0b;
+      display: block;
+    }
 
     /* Emulated model name section styling */
     .emulated-section { background: #f0f7ff; border: 1px solid #bfdbfe; border-radius: 10px; padding: 16px; margin-top: 18px; }
@@ -119,6 +137,8 @@
         <option value="custom">Enter custom model name...</option>
       </select>
       <input type="text" id="custom-emulated-name" placeholder="Custom model name (e.g., my-model)" style="display:none; margin-top:8px;">
+      <!-- Validation message -->
+      <p id="emulated-validation" class="validation-message"></p>
       <p class="emulated-hint">
         When a Pinokio app requests this model name, it will be routed to your configured provider/model above.
         Leave empty to use the actual model name directly (no emulation).
@@ -750,6 +770,28 @@
         modelSelect.value = option.id || '';
       }
     );
+
+    // Validation functions
+    function showValidation(elementId, type, message) {
+      var el = document.getElementById(elementId);
+      if (message) {
+        el.textContent = message;
+        el.className = 'validation-message ' + type;
+      } else {
+        el.className = 'validation-message';
+        el.textContent = '';
+      }
+    }
+
+    // Add validation listeners
+    emulatedModelSelect.addEventListener('change', function() {
+      if (this.value === '') {
+        showValidation('emulated-validation', 'warning',
+          '⚠ Empty = transparent mode (routes under actual model name)');
+      } else {
+        showValidation('emulated-validation', 'success', '✓ Emulation configured');
+      }
+    });
 
     init();
   </script>

@@ -1,4 +1,4 @@
-# Virtual Model Emulator v2.2.0
+# Virtual Model Emulator v2.2.1
 
 A unified AI model emulation and routing platform that allows you to transparently route API calls to different LLM providers while presenting them as if they're a single model.
 
@@ -102,6 +102,7 @@ The emulator will route "gpt-4" to whatever model you configured.
 
 ## Version History
 
+- **v2.2.1** (2026-01-06): Production hardening - rate limiting, caching, audit logging, key rotation
 - **v2.2.0** (2025-01-06): Major simplification - removed proxy/database, uses SDK directly
 - **v2.1.4** (2025-01-04): Complete architectural refactor, UI fixes, cross-tab sync
 - **v2.1.2**: Previous version
