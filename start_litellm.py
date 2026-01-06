@@ -4,6 +4,7 @@ import sys
 import subprocess
 import time
 import signal
+import traceback
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -18,14 +19,54 @@ def generate_prisma_client():
     The Prisma client needs to be generated from the package's schema.
     """
     try:
-        import litellm_proxy_extras
-        package_dir = os.path.dirname(litellm_proxy_extras.__file__)
+        # Try to find the schema file in multiple locations
+        possible_schema_paths = [
+            # 1. In litellm_proxy_extras package
+            os.path.join(sys.prefix, 'Lib', 'site-packages', 'litellm_proxy_extras', 'schema.prisma'),
+            os.path.join(sys.prefix, 'lib', 'python3.*', 'site-packages', 'litellm_proxy_extras', 'schema.prisma'),
+            # 2. In current directory
+            os.path.join(os.path.dirname(__file__), 'schema.prisma'),
+            # 3. In parent directory
+            os.path.join(os.path.dirname(__file__), '..', 'schema.prisma'),
+        ]
 
-        print(f'[INFO] Generating Prisma client from {package_dir}...', flush=True)
+        schema_path = None
+        for path in possible_schema_paths:
+            # Expand wildcards
+            import glob
+            expanded = glob.glob(path)
+            if expanded:
+                schema_path = expanded[0]
+                break
+
+        if not schema_path:
+            print('[WARN] No Prisma schema found, skipping generation', flush=True)
+            return True
+
+        print(f'[INFO] Generating Prisma client from {schema_path}...', flush=True)
+
+        # Generate in the directory containing the schema
+        schema_dir = os.path.dirname(schema_path)
+
+        # Build command - try different approaches
+        cmd = [sys.executable, '-m', 'prisma', 'generate']
+
+        # On Windows, prisma might be installed as a standalone executable
+        if sys.platform == 'win32':
+            # Try to find prisma-cli in common locations
+            possible_prisma_paths = [
+                os.path.join(sys.prefix, 'Scripts', 'prisma'),
+                os.path.join(sys.prefix, 'Scripts', 'prisma.exe'),
+                os.path.join(os.path.dirname(sys.executable), 'Scripts', 'prisma.exe'),
+            ]
+            for prisma_path in possible_prisma_paths:
+                if os.path.exists(prisma_path):
+                    cmd = [prisma_path, 'generate']
+                    break
 
         result = subprocess.run(
-            [sys.executable, '-m', 'prisma', 'generate'],
-            cwd=package_dir,
+            cmd,
+            cwd=schema_dir,
             capture_output=True,
             text=True,
             timeout=60
@@ -36,18 +77,20 @@ def generate_prisma_client():
             return True
         else:
             print(f'[WARN] Prisma generation returned code {result.returncode}', flush=True)
+            print(f'[DEBUG] Prisma stdout: {result.stdout[:500] if result.stdout else "None"}', flush=True)
             if result.stderr:
                 print(f'[DEBUG] Prisma stderr: {result.stderr[:500]}', flush=True)
             return False
 
-    except ImportError:
-        print('[WARN] litellm_proxy_extras not installed, skipping Prisma generation', flush=True)
-        return True  # Not a failure - package may not be needed
+    except ImportError as e:
+        print(f'[WARN] Import error in Prisma generation: {e}', flush=True)
+        return True  # Not a critical failure
     except subprocess.TimeoutExpired:
         print('[WARN] Prisma generation timed out', flush=True)
         return False
     except Exception as e:
         print(f'[WARN] Prisma generation failed: {e}', flush=True)
+        traceback.print_exc()
         return False
 
 
@@ -102,12 +145,14 @@ def main():
     config_file = Path(__file__).parent / 'config.yaml'
 
     if not config_file.exists():
-        print(f'[ERROR] config.yaml not found', flush=True)
+        print(f'[ERROR] config.yaml not found at {config_file}', flush=True)
         sys.exit(1)
 
     # Generate Prisma client before starting LiteLLM
     if not generate_prisma_client():
         print('[WARN] Continuing despite Prisma generation issues', flush=True)
+    else:
+        print('[OK] Prisma client generation complete', flush=True)
 
     print('[INFO] Starting LiteLLM proxy...', flush=True)
 
@@ -117,9 +162,10 @@ def main():
         creation_flags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
 
     try:
+        # ✅ CRITICAL FIX: Use correct module path
         process = subprocess.Popen(
             [
-                sys.executable, '-m', 'litellm',
+                sys.executable, '-m', 'litellm.proxy.proxy_server',
                 '--config', str(config_file),
                 '--port', str(litellm_port),
                 '--host', '127.0.0.1'
@@ -129,6 +175,8 @@ def main():
             stderr=subprocess.STDOUT,
             text=True,
             bufsize=1,
+            encoding='utf-8',
+            errors='replace',
             creationflags=creation_flags
         )
 
@@ -136,6 +184,7 @@ def main():
 
     except Exception as e:
         print(f'[ERROR] Failed to start LiteLLM: {e}', flush=True)
+        traceback.print_exc()
         sys.exit(1)
 
     # Save PID

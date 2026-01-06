@@ -233,49 +233,103 @@ class PostgreSQLManager:
             print(f'[ERROR] Failed to start PostgreSQL: {e}', flush=True)
             return False
 
-    def create_database(self, timeout=10):
+    def create_database(self, timeout=30):
         """Create database if it doesn't exist."""
-        try:
-            # Try to connect - if successful, database exists
-            import subprocess
-            result = subprocess.run([
-                str(PG_ISREADY.resolve()),
-                '-h', self.host,
-                '-p', str(self.port),
-                '-U', self.user,
-                '-d', self.database
-            ], capture_output=True, text=True, timeout=2, env=self.pg_env)
+        print(f'[INFO] Checking/creating database {self.database}...', flush=True)
 
-            if result.returncode == 0:
-                print(f'[OK] Database {self.database} exists', flush=True)
-                return True
-        except Exception:
-            pass
+        # First, ensure PostgreSQL is fully ready
+        if not self.wait_for_ready(timeout=15):
+            print('[ERROR] PostgreSQL not ready for database operations', flush=True)
+            return False
 
-        # Create database
-        print(f'[INFO] Creating database {self.database}...', flush=True)
-        try:
-            result = subprocess.run([
-                str((BIN_DIR / ('createdb.exe' if sys.platform == 'win32' else 'createdb')).resolve()),
-                '-h', self.host,
-                '-p', str(self.port),
-                '-U', self.user,
-                self.database
-            ], capture_output=True, text=True, timeout=timeout, env=self.pg_env)
+        # Use psql to check if database exists and create it if not
+        psql_path = BIN_DIR / ('psql.exe' if sys.platform == 'win32' else 'psql')
 
-            if result.returncode == 0 or 'already exists' in result.stderr:
-                print(f'[OK] Database {self.database} ready', flush=True)
-                return True
-            else:
-                print(f'[ERROR] Database creation failed: {result.stderr}', flush=True)
+        if not psql_path.exists():
+            print(f'[ERROR] psql not found at {psql_path}', flush=True)
+            return False
+
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                # Check if database exists using SQL query
+                check_cmd = [
+                    str(psql_path.resolve()),
+                    '-h', self.host,
+                    '-p', str(self.port),
+                    '-U', self.user,
+                    '-d', 'postgres',  # Connect to default database
+                    '-c', f"SELECT 1 FROM pg_database WHERE datname = '{self.database}'",
+                    '-t',  # Tuple-only output
+                    '-q'   # Quiet mode
+                ]
+
+                result = subprocess.run(
+                    check_cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                    env=self.pg_env
+                )
+
+                # If database exists (returns "1")
+                if result.returncode == 0 and result.stdout.strip() == '1':
+                    print(f'[OK] Database {self.database} already exists', flush=True)
+                    return True
+
+                # Database doesn't exist, create it
+                print(f'[INFO] Creating database {self.database} (attempt {attempt+1}/{max_retries})...', flush=True)
+
+                create_cmd = [
+                    str(psql_path.resolve()),
+                    '-h', self.host,
+                    '-p', str(self.port),
+                    '-U', self.user,
+                    '-d', 'postgres',
+                    '-c', f'CREATE DATABASE {self.database}'
+                ]
+
+                result = subprocess.run(
+                    create_cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=15,
+                    env=self.pg_env
+                )
+
+                if result.returncode == 0:
+                    print(f'[OK] Database {self.database} created successfully', flush=True)
+                    return True
+                else:
+                    # Check if database was created in a race condition
+                    if 'already exists' in result.stderr.lower():
+                        print(f'[OK] Database {self.database} already exists (race condition)', flush=True)
+                        return True
+
+                    print(f'[WARN] Database creation failed: {result.stderr}', flush=True)
+
+                    # Sleep and retry
+                    if attempt < max_retries - 1:
+                        time.sleep(2)
+                        continue
+
+                    return False
+
+            except subprocess.TimeoutExpired:
+                print(f'[WARN] Database operation timed out (attempt {attempt+1}/{max_retries})', flush=True)
+                if attempt < max_retries - 1:
+                    time.sleep(2)
+                    continue
+                return False
+            except Exception as e:
+                print(f'[WARN] Database operation error: {e}', flush=True)
+                if attempt < max_retries - 1:
+                    time.sleep(2)
+                    continue
                 return False
 
-        except subprocess.TimeoutExpired:
-            print('[ERROR] Database creation timed out', flush=True)
-            return False
-        except Exception as e:
-            print(f'[ERROR] Database creation error: {e}', flush=True)
-            return False
+        print('[ERROR] Failed to create database after all retries', flush=True)
+        return False
 
     def stop(self, mode='fast', timeout=30):
         """Stop PostgreSQL server."""
