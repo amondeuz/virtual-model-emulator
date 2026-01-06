@@ -1,5 +1,32 @@
 # Changelog
 
+## [2.2.1] - 2026-01-06
+
+### Added
+- **Rate Limiting**: 10 requests/second per IP to prevent abuse
+- **Model Caching**: 1-hour TTL cache for provider model lists with force refresh option
+- **Stale Fallback**: Returns cached models when provider is temporarily offline
+- **Audit Logging**: All security-relevant actions logged to `config/audit.log`
+- **Error Logging**: Structured error logs in `config/errors.log`
+- **Retry Logic**: Exponential backoff for transient errors (timeouts, 503s)
+- **Master Key Rotation**: `/admin/rotate-key` endpoint for key rotation
+- **Cache Stats**: `/admin/cache-stats` endpoint for monitoring
+- **Response Compression**: Gzip compression for responses >1KB
+- **UI Validation**: Real-time validation feedback for emulated model configuration
+- **API Documentation**: Comprehensive API.md documentation file
+- **Troubleshooting Guide**: TROUBLESHOOTING.md for common issues
+- **Unit Tests**: test_server.py with encryption, caching, rate limiting tests
+
+### Changed
+- `/models` endpoint now supports `force=true` parameter to bypass cache
+- Improved error handling with structured logging context
+- Better feedback in UI when emulation is configured
+
+### Security
+- Rate limiting prevents API abuse
+- Audit logging for compliance and security monitoring
+- Key rotation capability for credential management
+
 ## [2.2.0] - 2025-01-06
 
 ### Changed
