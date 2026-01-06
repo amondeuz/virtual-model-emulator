@@ -6,7 +6,7 @@ module.exports = {
         path: "full_install.py",
         text: `# -*- coding: utf-8 -*-
 """
-Virtual Model Emulator v3.0.0 - Simplified Installation
+Virtual Model Emulator v2.2.0 - Simplified Installation
 Only installs LiteLLM SDK (no proxy, no PostgreSQL needed).
 """
 import sys
@@ -24,7 +24,7 @@ def run_command(cmd, desc=""):
     return result
 
 print('='*60)
-print('Virtual Model Emulator v3.0.0 - Installation')
+print('Virtual Model Emulator v2.2.0 - Installation')
 print('SDK Mode (No Proxy Required)')
 print('='*60)
 
