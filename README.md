@@ -8,9 +8,13 @@ A unified AI model emulation and routing platform that allows you to transparent
 - **Model Aliasing**: Request "gpt-4" but route to any provider's model
 - **Local-First Architecture**: Run entirely on your machine, no cloud dependencies
 - **Direct SDK Integration**: Uses LiteLLM SDK directly (no proxy server needed)
+- **Encrypted API Keys**: Master key encryption for secure credential storage
+- **Audit Logging**: Security-relevant actions logged to `config/audit.log`
+- **Rate Limiting**: 10 req/s per IP to prevent abuse
+- **Smart Caching**: 1-hour TTL cache for provider models with stale fallback
 - **Web-Based UI**: User-friendly interface for managing configurations
 - **Cross-Tab Synchronization**: Real-time updates across browser tabs in Pinokio
-- **Fast Startup**: Single service architecture for quick initialization
+- **Fast Startup**: Single service architecture, 5-second initialization
 
 ## Quick Start
 

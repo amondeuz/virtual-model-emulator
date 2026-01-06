@@ -1,18 +1,19 @@
-# Installation & Setup Notes
+# Installation & Setup Notes (v2.2.1)
 
 ## What Gets Installed
 
-### Python Dependencies
-- litellm (routing engine)
-- prisma (database ORM)
-- psycopg2 (PostgreSQL client)
-- uvicorn (ASGI server)
+### Python Dependencies (Simplified for v2.2.1)
+- litellm>=1.10.0 (Direct SDK usage - no proxy needed)
+- cryptography>=41.0.0 (API key encryption)
+- PyYAML>=6.0 (Configuration management)
+- pytest>=7.0.0 (Unit testing)
 
-### PostgreSQL Binary
-- Platform-specific PostgreSQL 16 binaries
-- Downloaded from EnterpriseDB
-- SHA-256 verification
-- ~300 MB download
+### What You DON'T Need Anymore (v2.2.0+)
+- PostgreSQL binary (removed - no database needed)
+- LiteLLM proxy server (using SDK directly)
+- Prisma (no database)
+- psycopg2 (no PostgreSQL)
+- uvicorn (not needed)
 
 ### Configuration Files
 - .env (database and service config)
@@ -64,24 +65,24 @@ curl http://127.0.0.1:8775/
 
 ## Troubleshooting
 
-### PostgreSQL binary download failed
-- Check internet connection
-- Verify SHA-256 of downloaded file
-- Try reinstalling
+### "Port 8775 already in use"
+- Check: `lsof -i :8775` (macOS/Linux) or `netstat -ano | findstr :8775` (Windows)
+- Kill the process or change API_SERVER_PORT in .env
+- API Server uses port 8775 only (no PostgreSQL or LiteLLM proxy)
 
-### Port already in use
-- Check running processes: `lsof -i :5450`
-- LiteLLM uses 11435
-- API Server uses 8775
+### "Failed to load models"
+- Check internet connection: `curl -I https://api.groq.com`
+- Verify API key is valid in connect.html tab
+- Check error logs: `tail -f config/errors.log`
 
-### Cannot create database
-- Check PostgreSQL is running
-- Check password in .env
-- Check createdb binary exists
+### "No models loading after adding API key"
+- Click "Refresh" button to fetch models from provider
+- Check audit log: `cat config/audit.log | grep MODELS`
+- Some providers have rate limits - wait 60 seconds and retry
 
-### Prisma client not found
-- Run: `pip install prisma`
-- Restart app
+### "Keys showing in error messages"
+- This should never happen - report as security bug
+- Check error messages are sanitized: `grep -v "sk-" config/errors.log`
 
 ## Performance Tips
 

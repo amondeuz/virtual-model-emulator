@@ -159,5 +159,71 @@ class TestModelCache(unittest.TestCase):
         self.assertIsNotNone(cache.get("groq"))
 
 
+class TestAccountManagement(unittest.TestCase):
+    """Test account lifecycle (add, load, delete)"""
+
+    def test_account_encryption_roundtrip(self):
+        """Verify account save/load preserves data"""
+        from server import save_accounts, load_accounts
+
+        test_accounts = [
+            {"provider": "groq", "accountName": "test1", "apiKey": "sk-test123"},
+            {"provider": "openai", "accountName": "test2", "apiKey": "sk-test456"}
+        ]
+
+        save_accounts(test_accounts)
+        loaded = load_accounts()
+
+        self.assertEqual(len(loaded), 2)
+        self.assertEqual(loaded[0]["provider"], "groq")
+        self.assertEqual(loaded[0]["apiKey"], "sk-test123")
+
+
+class TestEmulationState(unittest.TestCase):
+    """Test emulation state management"""
+
+    def test_emulation_save_load(self):
+        """Verify emulation state persists"""
+        from server import save_emulations, load_emulations, _active_emulations
+        import server
+
+        # Set test emulation
+        test_emul = {
+            "id": "test-123",
+            "emulatedName": "gpt-4",
+            "actualModel": "groq/llama-3.3-70b",
+            "provider": "groq",
+            "apiKey": "sk-test"
+        }
+        server._active_emulations = [test_emul]
+        save_emulations()
+
+        # Clear and reload
+        server._active_emulations = []
+        loaded = load_emulations()
+
+        self.assertEqual(len(loaded), 1)
+        self.assertEqual(loaded[0]["emulatedName"], "gpt-4")
+
+
+class TestErrorLogging(unittest.TestCase):
+    """Test error logging format"""
+
+    def test_log_error_format(self):
+        """Verify error logs include all context"""
+        from server import log_error
+        import logging
+
+        # Capture log output
+        with self.assertLogs('errors', level='ERROR') as cm:
+            error = Exception("Test error")
+            context = {"provider": "groq", "model": "llama-70b"}
+            log_error(error, context, "TEST_ACTION")
+
+        # Verify format
+        self.assertTrue(any("TEST_ACTION" in msg for msg in cm.output))
+        self.assertTrue(any("Test error" in msg for msg in cm.output))
+
+
 if __name__ == '__main__':
     unittest.main()

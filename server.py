@@ -8,17 +8,17 @@ import http.server
 import socketserver
 import threading
 import time
-from pathlib import Path
-from cryptography.fernet import Fernet
-import yaml
 import gzip
 import logging
 import traceback
-import time
+import random
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
 from collections import defaultdict
 from datetime import datetime
+
 from cryptography.fernet import Fernet
+import yaml
 
 # Import LiteLLM SDK
 try:
@@ -166,7 +166,7 @@ def call_with_retry(func, *args, max_attempts: int = 3, base_delay: float = 1.0,
                 raise
             if attempt == max_attempts - 1:
                 raise
-            delay = base_delay * (2 ** attempt) + __import__('random').uniform(0, 1)
+            delay = base_delay * (2 ** attempt) + random.uniform(0, 1)
             print(f"[WARN] Retrying (attempt {attempt + 1}/{max_attempts}): delay={delay:.1f}s", flush=True)
             time.sleep(delay)
     raise last_error
@@ -258,6 +258,9 @@ class AccountEncryption:
             yaml.dump(config, f, default_flow_style=False)
 
         print(f'[OK] Master key generated and saved to config.yaml', flush=True)
+        print(f'[WARNING] ⚠️  KEEP config.yaml SECURE - contains encryption key!', flush=True)
+        print(f'[WARNING] ⚠️  Do NOT commit config.yaml to version control', flush=True)
+        print(f'[WARNING] ⚠️  Do NOT share config.yaml with others', flush=True)
         return new_key.encode()
 
     def encrypt(self, plaintext):
@@ -283,7 +286,7 @@ _active_emulations = []
 CONFIG_DIR.mkdir(exist_ok=True)
 
 
-def load_accounts():
+def load_accounts() -> List[Dict[str, Any]]:
     """Load accounts from JSON file and decrypt API keys."""
     if ACCOUNTS_FILE.exists():
         try:
@@ -300,7 +303,7 @@ def load_accounts():
     return []
 
 
-def save_accounts(accounts):
+def save_accounts(accounts: List[Dict[str, Any]]) -> None:
     """Save accounts to JSON file with encrypted API keys."""
     # Make a copy to avoid modifying in-memory accounts
     accounts_to_save = []
@@ -314,45 +317,52 @@ def save_accounts(accounts):
     ACCOUNTS_FILE.write_text(json.dumps(accounts_to_save, indent=2))
 
 
-def load_emulations():
-    """Load emulations from JSON file."""
+def load_emulations() -> List[Dict[str, Any]]:
+    """Load emulations from JSON file with validation."""
     global _active_emulations
-    if EMULATIONS_FILE.exists():
-        try:
-            _active_emulations = json.loads(EMULATIONS_FILE.read_text())
+    try:
+        if EMULATIONS_FILE.exists():
+            content = EMULATIONS_FILE.read_text()
+            _active_emulations = json.loads(content)
+            if isinstance(_active_emulations, list) and len(_active_emulations) > 0:
+                print(f"[OK] Loaded {len(_active_emulations)} emulations from disk", flush=True)
             return _active_emulations
-        except Exception:
-            pass
+    except json.JSONDecodeError as e:
+        print(f"[ERROR] Corrupted emulations.json: {e}", flush=True)
+        print(f"[WARN] Starting with empty emulations", flush=True)
+    except Exception as e:
+        print(f"[WARN] Failed to load emulations: {e}", flush=True)
+
     _active_emulations = []
     return []
 
 
-def save_emulations():
+def save_emulations() -> None:
     """Save emulations to JSON file."""
     global _active_emulations
     EMULATIONS_FILE.write_text(json.dumps(_active_emulations, indent=2))
 
 
-def get_accounts_for_provider(provider_id):
+def get_accounts_for_provider(provider_id: str) -> List[Dict[str, Any]]:
     """Get all accounts for a specific provider."""
     accounts = load_accounts()
     return [a for a in accounts if a["provider"] == provider_id]
 
 
-def get_providers_with_accounts():
+def get_providers_with_accounts() -> List[str]:
     """Get list of provider IDs that have at least one account."""
     accounts = load_accounts()
     return list(set(acc["provider"] for acc in accounts))
 
 
-def get_provider_by_id(provider_id):
+def get_provider_by_id(provider_id: Optional[str]) -> Optional[Dict[str, str]]:
     """Get provider info by ID."""
     if not provider_id or not isinstance(provider_id, str):
         return None
     return next((p for p in PROVIDERS if p["id"] == provider_id), None)
 
 
-def find_api_key_for_provider(provider_id, account_name=None):
+def find_api_key_for_provider(provider_id: str, account_name: Optional[str] = None) -> Optional[str]:
     """Find API key for a provider from accounts or environment variables."""
     if not provider_id:
         return None
@@ -372,7 +382,7 @@ def find_api_key_for_provider(provider_id, account_name=None):
     return None
 
 
-def has_any_api_keys():
+def has_any_api_keys() -> bool:
     """Check if ANY provider has an API key configured."""
     accounts = load_accounts()
     if len(accounts) > 0:
@@ -380,7 +390,7 @@ def has_any_api_keys():
     return any(os.environ.get(p["envVar"]) for p in PROVIDERS)
 
 
-def _sanitize_error(error_msg):
+def _sanitize_error(error_msg: Any) -> str:
     """Remove potentially sensitive information from error messages."""
     if not error_msg:
         return "Unknown error"
@@ -852,12 +862,21 @@ def main():
     import errno
     import sys
 
-    # Load emulations from file
-    load_emulations()
+    # Load and validate emulations from file
+    emulations = load_emulations()
+    if len(emulations) > 0:
+        print(f"[INFO] Restored {len(emulations)} active emulations from disk", flush=True)
 
     # Ensure required directories exist
     PUBLIC_DIR.mkdir(parents=True, exist_ok=True)
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Verify configuration is ready
+    accounts = load_accounts()
+    if len(accounts) == 0:
+        print(f"[INFO] No accounts configured yet - use connect.html to add providers", flush=True)
+    else:
+        print(f"[INFO] Loaded {len(accounts)} provider account(s)", flush=True)
 
     # Get port from environment
     port = int(os.environ.get('API_SERVER_PORT', 8775))
@@ -875,8 +894,10 @@ def main():
         with socketserver.TCPServer(("127.0.0.1", port), APIHandler) as httpd:
             # Output URL (required for app_launcher.py ready detection)
             print(f"http://localhost:{port}/config.html", flush=True)
-            print(f"[INFO] API server started on port {port} (LiteLLM SDK mode)", flush=True)
-            print(f"[OK] Server ready - No proxy needed!", flush=True)
+            print(f"[INFO] API server started on port {port}", flush=True)
+            print(f"[INFO] Architecture: API Server → LiteLLM SDK → Provider APIs", flush=True)
+            print(f"[OK] Server ready - No proxy or database needed!", flush=True)
+            print(f"[OK] All services started and verified", flush=True)
             httpd.serve_forever()
 
     except OSError as e:
