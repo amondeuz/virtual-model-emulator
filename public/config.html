@@ -121,7 +121,7 @@
       <input type="text" id="custom-emulated-name" placeholder="Custom model name (e.g., my-model)" style="display:none; margin-top:8px;">
       <p class="emulated-hint">
         When a Pinokio app requests this model name, it will be routed to your configured provider/model above.
-        Leave empty to accept any model name.
+        Leave empty to use the actual model name directly (no emulation).
       </p>
     </div>
 
@@ -449,13 +449,8 @@
           startStopBtn.textContent = 'Start';
           return;
         }
-        // Validate emulated model name (cannot be empty/whitespace)
-        if (!emulatedModelName || !emulatedModelName.trim()) {
-          setMessage('Enter an emulated model name (cannot be empty).');
-          startStopBtn.disabled = false;
-          startStopBtn.textContent = 'Start';
-          return;
-        }
+        // Use actual model as default if emulated name is empty
+        var finalEmulatedName = emulatedModelName.trim() || model;
         fetch('/emulator/start', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -463,7 +458,7 @@
             account: accountName,
             provider: provider,
             model: model,
-            emulatedModelName: emulatedModelName,
+            emulatedModelName: finalEmulatedName,
             apiKeyEnvVar: ''
           })
         })

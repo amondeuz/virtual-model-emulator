@@ -9,6 +9,8 @@ import socketserver
 import threading
 import time
 from pathlib import Path
+from cryptography.fernet import Fernet
+import yaml
 
 # Import LiteLLM SDK
 try:
@@ -22,11 +24,62 @@ except ImportError:
 BASE_DIR = Path(__file__).parent
 PUBLIC_DIR = BASE_DIR / "public"
 CONFIG_DIR = BASE_DIR / "config"
+CONFIG_FILE = CONFIG_DIR / "config.yaml"
 ACCOUNTS_FILE = CONFIG_DIR / "accounts.json"
 EMULATIONS_FILE = CONFIG_DIR / "emulations.json"
 
 # Thread-safe lock for emulation operations
 _emulation_lock = threading.Lock()
+
+
+class AccountEncryption:
+    """Handle encryption/decryption of API keys using master key from config.yaml"""
+
+    def __init__(self):
+        self.master_key = self._get_or_create_master_key()
+        self.cipher = Fernet(self.master_key)
+
+    def _get_or_create_master_key(self):
+        """Get master key from config.yaml, create if missing"""
+        if CONFIG_FILE.exists():
+            with open(CONFIG_FILE, 'r') as f:
+                config = yaml.safe_load(f) or {}
+                if 'master_key' in config:
+                    return config['master_key'].encode()
+
+        # Generate new master key
+        new_key = Fernet.generate_key().decode()
+
+        # Save to config.yaml
+        config = {}
+        if CONFIG_FILE.exists():
+            with open(CONFIG_FILE, 'r') as f:
+                config = yaml.safe_load(f) or {}
+
+        config['master_key'] = new_key
+        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+
+        with open(CONFIG_FILE, 'w') as f:
+            yaml.dump(config, f, default_flow_style=False)
+
+        print(f'[OK] Master key generated and saved to config.yaml', flush=True)
+        return new_key.encode()
+
+    def encrypt(self, plaintext):
+        """Encrypt API key"""
+        return self.cipher.encrypt(plaintext.encode()).decode()
+
+    def decrypt(self, ciphertext):
+        """Decrypt API key"""
+        try:
+            return self.cipher.decrypt(ciphertext.encode()).decode()
+        except Exception as e:
+            print(f'[ERROR] Failed to decrypt API key: {e}', flush=True)
+            return None
+
+
+# Initialize encryption at module level
+encryption = AccountEncryption()
 
 # In-memory emulation state (persisted to JSON)
 _active_emulations = []
@@ -36,18 +89,34 @@ CONFIG_DIR.mkdir(exist_ok=True)
 
 
 def load_accounts():
-    """Load accounts from JSON file."""
+    """Load accounts from JSON file and decrypt API keys."""
     if ACCOUNTS_FILE.exists():
         try:
-            return json.loads(ACCOUNTS_FILE.read_text())
-        except Exception:
-            pass
+            accounts = json.loads(ACCOUNTS_FILE.read_text())
+            # Decrypt API keys on load
+            for acc in accounts:
+                if 'apiKey' in acc:
+                    decrypted = encryption.decrypt(acc['apiKey'])
+                    if decrypted:
+                        acc['apiKey'] = decrypted
+            return accounts
+        except Exception as e:
+            print(f'[WARN] Failed to load accounts: {e}', flush=True)
     return []
 
 
 def save_accounts(accounts):
-    """Save accounts to JSON file."""
-    ACCOUNTS_FILE.write_text(json.dumps(accounts, indent=2))
+    """Save accounts to JSON file with encrypted API keys."""
+    # Make a copy to avoid modifying in-memory accounts
+    accounts_to_save = []
+    for acc in accounts:
+        acc_copy = acc.copy()
+        # Encrypt API key before saving
+        if 'apiKey' in acc_copy:
+            acc_copy['apiKey'] = encryption.encrypt(acc_copy['apiKey'])
+        accounts_to_save.append(acc_copy)
+
+    ACCOUNTS_FILE.write_text(json.dumps(accounts_to_save, indent=2))
 
 
 def load_emulations():
@@ -146,59 +215,6 @@ PROVIDERS = [
     {"id": "together", "name": "Together AI", "envVar": "TOGETHER_API_KEY", "prefix": "together_ai/"},
 ]
 
-# Static model lists per provider (commonly available models)
-PROVIDER_MODELS = {
-    "aiml": [
-        "gpt-4o", "gpt-4o-mini", "o1-preview", "o1-mini",
-        "claude-3-5-sonnet", "claude-3-opus", "claude-3-haiku",
-        "Llama-3.2-3B-Instruct-Turbo", "Llama-3.2-11B-Vision-Instruct-Turbo",
-    ],
-    "anthropic": [
-        "claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022",
-        "claude-3-opus-20240229", "claude-3-sonnet-20240229", "claude-3-haiku-20240307",
-    ],
-    "cerebras": [
-        "llama3.1-8b", "llama3.1-70b",
-    ],
-    "deepseek": [
-        "deepseek-chat", "deepseek-reasoner",
-    ],
-    "gemini": [
-        "gemini-2.0-flash-exp", "gemini-1.5-pro", "gemini-1.5-flash", "gemini-1.5-flash-8b",
-    ],
-    "groq": [
-        "llama-3.3-70b-versatile", "llama-3.1-70b-versatile", "llama-3.1-8b-instant",
-        "llama3-70b-8192", "llama3-8b-8192",
-        "mixtral-8x7b-32768", "gemma2-9b-it",
-    ],
-    "huggingface": [
-        "meta-llama/Llama-3.2-3B-Instruct", "meta-llama/Llama-3.2-1B-Instruct",
-        "mistralai/Mistral-7B-Instruct-v0.3",
-    ],
-    "mistral": [
-        "mistral-large-latest", "mistral-medium-latest", "mistral-small-latest",
-        "open-mistral-7b", "open-mixtral-8x7b", "open-mixtral-8x22b",
-    ],
-    "openai": [
-        "gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-4",
-        "gpt-3.5-turbo", "o1-preview", "o1-mini",
-    ],
-    "openrouter": [
-        "openai/gpt-4o", "openai/gpt-4o-mini",
-        "anthropic/claude-3.5-sonnet", "anthropic/claude-3-opus",
-        "meta-llama/llama-3.1-405b-instruct", "meta-llama/llama-3.1-70b-instruct",
-        "google/gemini-pro-1.5", "mistralai/mistral-large",
-    ],
-    "together": [
-        "meta-llama/Llama-3.3-70B-Instruct-Turbo",
-        "meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo",
-        "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo",
-        "mistralai/Mixtral-8x22B-Instruct-v0.1",
-        "Qwen/Qwen2.5-72B-Instruct-Turbo",
-    ],
-}
-
-
 class APIHandler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(PUBLIC_DIR), **kwargs)
@@ -232,6 +248,7 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
 
     def do_GET(self):
         import urllib.parse
+        global _active_emulations
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
         query = urllib.parse.parse_qs(parsed.query)
@@ -256,7 +273,6 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
                 })
 
             # Get active emulations
-            global _active_emulations
             emulator_active = len(_active_emulations) > 0
             any_provider_available = has_any_api_keys()
 
@@ -271,7 +287,6 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
             })
 
         elif path == "/emulator/status":
-            global _active_emulations
             any_provider_available = has_any_api_keys()
 
             self.send_json({
@@ -288,7 +303,6 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
             self.send_json({"online": True, "message": "API server running (LiteLLM SDK mode)"})
 
         elif path == "/emulator/active":
-            global _active_emulations
             self.send_json({"active": _active_emulations, "count": len(_active_emulations)})
 
         elif path == "/providers/list":
@@ -296,20 +310,48 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
 
         elif path == "/models":
             provider = query.get("provider", [""])[0]
-            models = []
 
-            if provider and provider in PROVIDER_MODELS:
-                provider_info = get_provider_by_id(provider)
-                for model_id in PROVIDER_MODELS.get(provider, []):
-                    models.append({
+            if not provider:
+                self.send_json({"error": "provider parameter required"}, 400)
+                return
+
+            try:
+                # Get API key for this provider
+                api_key = find_api_key_for_provider(provider)
+                if not api_key:
+                    self.send_json({
+                        "error": f"No API key configured for {provider}",
+                        "models": []
+                    }, 400)
+                    return
+
+                # Use LiteLLM SDK to get models live
+                models_list = litellm.get_model_list(
+                    custom_llm_provider=provider,
+                    api_key=api_key
+                )
+
+                # Format for frontend
+                formatted_models = []
+                prov = get_provider_by_id(provider)
+                for model_id in models_list:
+                    formatted_models.append({
                         "id": model_id,
                         "label": model_id,
                         "provider": provider,
-                        "providerName": provider_info["name"] if provider_info else provider
+                        "providerName": prov["name"] if prov else provider
                     })
 
-            models.sort(key=lambda m: m.get("label", "").lower())
-            self.send_json({"models": models})
+                formatted_models.sort(key=lambda m: m.get("label", "").lower())
+                self.send_json({"models": formatted_models})
+
+            except Exception as e:
+                # Provider offline or no models available
+                self.send_json({
+                    "error": _sanitize_error(str(e)),
+                    "offline": True,
+                    "models": []
+                }, 400)
 
         elif path == "/" or path == "":
             self.path = "/config.html"
@@ -322,6 +364,7 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
     def do_POST(self):
         import urllib.parse
         import uuid
+        global _active_emulations
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
 
@@ -403,7 +446,6 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
             }
 
             with _emulation_lock:
-                global _active_emulations
                 # Remove existing emulation with same name (if any)
                 _active_emulations = [e for e in _active_emulations if e["emulatedName"] != emulated_name]
                 _active_emulations.append(emulation)
@@ -420,7 +462,6 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
         elif path == "/emulator/stop":
             """Stop all active emulations."""
             with _emulation_lock:
-                global _active_emulations
                 count = len(_active_emulations)
                 stopped = [{"emulatedName": e["emulatedName"], "actualModel": e["actualModel"]} for e in _active_emulations]
                 _active_emulations = []
@@ -453,7 +494,6 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
             actual_model = requested_model
 
             with _emulation_lock:
-                global _active_emulations
                 for em in _active_emulations:
                     if em["emulatedName"] == requested_model:
                         emulation = em
