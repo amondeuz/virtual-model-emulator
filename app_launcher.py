@@ -168,7 +168,7 @@ def shutdown_services():
 
 
 def main():
-    print('[INFO] Virtual Model Emulator v2.2.0 - SDK Mode (No Proxy)', flush=True)
+    print('[INFO] Virtual Model Emulator v2.2.2 - SDK Mode (No Proxy)', flush=True)
     print('[INFO] Architecture: API Server → LiteLLM SDK → Provider APIs', flush=True)
 
     env = setup_environment()

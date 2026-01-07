@@ -2,7 +2,7 @@
 
 ## "No API key found for provider"
 
-**Solution**: Go to "Manage API Keys" tab, add your provider account.
+**Solution**: Go to "Connect Providers" tab, add your provider account.
 
 ## "Models aren't loading"
 

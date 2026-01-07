@@ -47,6 +47,67 @@ Health check.
 {"online": true, "message": "API server running"}
 ```
 
+### GET /emulator/status
+
+Get current emulator status and configuration.
+
+**Response:**
+```json
+{
+  "emulatorRunning": true,
+  "providerOnline": true,
+  "currentConfig": {
+    "emulatedModelName": "gpt-4",
+    "providerName": "Groq"
+  }
+}
+```
+
+### GET /emulator/active
+
+Get all active emulations (without API keys).
+
+**Response:**
+```json
+{
+  "active": [
+    {
+      "id": "uuid-123",
+      "emulatedName": "gpt-4",
+      "actualModel": "groq/llama-3.3-70b",
+      "provider": "groq"
+    }
+  ],
+  "count": 1
+}
+```
+
+### GET /providers/list
+
+Get list of all supported providers.
+
+**Response:**
+```json
+{
+  "providers": [
+    {"id": "groq", "name": "Groq", "envVar": "GROQ_API_KEY"},
+    {"id": "openai", "name": "OpenAI", "envVar": "OPENAI_API_KEY"}
+  ]
+}
+```
+
+### GET /providers/accounts
+
+Get list of saved provider accounts (names only).
+
+**Response:**
+```json
+[
+  {"provider": "groq", "accountName": "Personal"},
+  {"provider": "openai", "accountName": "Work"}
+]
+```
+
 ### POST /providers/connect
 
 Add provider account.
@@ -116,6 +177,15 @@ OpenAI-compatible chat endpoint.
 
 - **Limit**: 10 requests/second per IP
 - **Response on limit**: 429 Too Many Requests
+
+## Configuration
+
+### Environment Variables
+- `API_SERVER_PORT`: Port for API server (default: 8775)
+- `VME_MASTER_KEY`: Master encryption key (optional - generated if not set)
+- `ADMIN_SECRET`: Bearer token for admin endpoints (optional)
+- `SSL_CERT_FILE`: Path to SSL certificate (optional - enables HTTPS)
+- `SSL_KEY_FILE`: Path to SSL private key (optional - enables HTTPS)
 
 ## Caching
 

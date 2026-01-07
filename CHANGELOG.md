@@ -40,6 +40,7 @@ New environment variables for secure deployment:
 - `ADMIN_SECRET`: Bearer token for /emulator/stop authentication (optional)
 - `SSL_CERT_FILE`: Path to SSL certificate file (optional)
 - `SSL_KEY_FILE`: Path to SSL private key file (optional)
+- `API_SERVER_PORT`: Port for API server (default 8775)
 
 ## [2.2.1] - 2026-01-06
 
