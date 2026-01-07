@@ -605,6 +605,8 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
             self.send_json({"providers": PROVIDERS})
 
         elif path == "/models":
+            import requests
+
             provider = query.get("provider", [""])[0]
             force = query.get("force", ["false"])[0].lower() == "true"
 
@@ -612,7 +614,6 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
                 self.send_json({"error": "provider parameter required"}, 400)
                 return
 
-            # Check cache first (unless force=true)
             if not force:
                 cached_models = model_cache.get(provider)
                 if cached_models is not None:
@@ -620,23 +621,37 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
                     return
 
             try:
-                api_key = find_api_key_for_provider(provider)
-                if not api_key:
-                    self.send_json({
-                        "error": f"No API key configured for {provider}",
-                        "models": []
-                    }, 400)
+                provider_db_path = CONFIG_DIR / "providers_models.json"
+                if not provider_db_path.exists():
+                    self.send_json({"error": "Provider database not found", "models": []}, 500)
                     return
 
-                # Fetch with retry and timeout
-                models_list = call_with_retry(
-                    litellm.get_model_list,
-                    custom_llm_provider=provider,
-                    api_key=api_key,
-                    timeout=15,
-                    max_attempts=3,
-                    base_delay=1.0
-                )
+                with open(provider_db_path, 'r') as f:
+                    provider_db = json.load(f)
+
+                if provider not in provider_db.get("providers", {}):
+                    self.send_json({"error": f"Unknown provider: {provider}", "models": []}, 400)
+                    return
+
+                provider_config = provider_db["providers"][provider]
+                api_key = find_api_key_for_provider(provider)
+
+                if not api_key:
+                    self.send_json({"error": f"No API key configured for {provider}", "models": []}, 400)
+                    return
+
+                models_list = []
+
+                if provider_config.get("endpoint_type") == "openai_compatible" and provider_config.get("models_endpoint"):
+                    models_endpoint = provider_config["models_endpoint"]
+                    auth_format = provider_config.get("auth_format", "Bearer {api_key}").format(api_key=api_key)
+                    response = call_with_retry(requests.get, models_endpoint, headers={"Authorization": auth_format}, timeout=15, max_attempts=3)
+                    response.raise_for_status()
+                    models_list = [m["id"] for m in response.json().get("data", [])]
+                elif provider_config.get("static_models"):
+                    models_list = provider_config["static_models"]
+                else:
+                    raise ValueError(f"Model discovery not available for {provider}")
 
                 formatted_models = []
                 prov = get_provider_by_id(provider)
@@ -645,7 +660,7 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
                         "id": model_id,
                         "label": model_id,
                         "provider": provider,
-                        "providerName": prov["name"] if prov else provider
+                        "providerName": prov["name"] if prov else provider_config.get("name", provider)
                     })
 
                 formatted_models.sort(key=lambda m: m.get("label", "").lower())
@@ -654,25 +669,14 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
                 self.send_json({"models": formatted_models, "cached": False})
 
             except Exception as e:
-                # Try stale cache fallback
                 stale_models = stale_fallback.get_stale(provider)
                 if stale_models:
                     age = stale_fallback.age_minutes(provider)
-                    context = {"provider": provider, "stale_age_minutes": age}
-                    log_error(e, context, "MODELS_FALLBACK_TO_STALE")
-                    self.send_json({
-                        "models": stale_models,
-                        "cached": True,
-                        "warning": f"Using cached data from {age} minutes ago"
-                    })
+                    log_error(e, {"provider": provider, "stale_age_minutes": age}, "MODELS_FALLBACK_TO_STALE")
+                    self.send_json({"models": stale_models, "cached": True, "warning": f"Using cached data from {age} minutes ago"})
                 else:
-                    context = {"provider": provider, "endpoint": path}
-                    log_error(e, context, "MODEL_FETCH_FAILED")
-                    self.send_json({
-                        "error": _sanitize_error(str(e)),
-                        "offline": True,
-                        "models": []
-                    }, 400)
+                    log_error(e, {"provider": provider, "endpoint": path}, "MODEL_FETCH_FAILED")
+                    self.send_json({"error": _sanitize_error(str(e)), "offline": True, "models": []}, 400)
 
         elif path == "/admin/cache-stats":
             self.send_json({
