@@ -37,6 +37,9 @@ result = run_command(f'"{sys.executable}" -m pip install --upgrade "litellm>=1.1
 if result.returncode != 0:
     # Try with --break-system-packages for some Linux systems
     run_command(f'"{sys.executable}" -m pip install --break-system-packages --upgrade "litellm>=1.10.0"', "Installing litellm>=1.10.0 (retry)")
+run_command(f'"{sys.executable}" -m pip install --upgrade "cryptography>=41.0.0"', "Installing cryptography>=41.0.0")
+run_command(f'"{sys.executable}" -m pip install --upgrade "PyYAML>=6.0"', "Installing PyYAML>=6.0")
+run_command(f'"{sys.executable}" -m pip install --upgrade "pytest>=7.0.0"', "Installing pytest>=7.0.0")
 print('[OK] Dependencies installed.')
 
 # 2. GENERATE .ENV FILE (minimal config)
