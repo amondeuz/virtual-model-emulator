@@ -1,19 +1,12 @@
-# Installation & Setup Notes (v2.2.1)
+# Installation & Setup Notes (v2.2.2)
 
 ## What Gets Installed
 
-### Python Dependencies (Simplified for v2.2.1)
-- litellm>=1.10.0 (Direct SDK usage - no proxy needed)
+### Python Dependencies
+- litellm>=1.10.0 (Direct SDK usage)
 - cryptography>=41.0.0 (API key encryption)
 - PyYAML>=6.0 (Configuration management)
-- pytest>=7.0.0 (Unit testing)
-
-### What You DON'T Need Anymore (v2.2.0+)
-- PostgreSQL binary (removed - no database needed)
-- LiteLLM proxy server (using SDK directly)
-- Prisma (no database)
-- psycopg2 (no PostgreSQL)
-- uvicorn (not needed)
+- pytest>=7.0.0 (Unit testing - optional for development)
 
 ### Configuration Files
 - .env (database and service config)
@@ -25,20 +18,15 @@
 
 ## Platform-Specific Notes
 
-### Windows 11 (Fully Supported)
+### Windows 10+ (Fully Supported)
 - Everything works automatically
 - Uses .exe binaries
 - Process isolation works correctly
 
-### macOS (Partial Support)
-- Manual PostgreSQL setup: `brew install postgresql`
-- Set PATH: `export PATH="/usr/local/opt/postgresql/bin:$PATH"`
+### macOS (Fully Supported)
 - Run: `python app_launcher.py`
 
-### Linux (Partial Support)
-- Use system PostgreSQL: `sudo apt install postgresql`
-- Start service: `sudo systemctl start postgresql`
-- Set in .env: `DATABASE_URL=postgresql://postgres:password@localhost:5432/litellm`
+### Linux (Fully Supported)
 - Run: `python app_launcher.py`
 
 ## First Time Checklist
@@ -53,14 +41,8 @@ After installation:
 ## Verification
 
 ```bash
-# PostgreSQL
-pg_isready -h 127.0.0.1 -p 5450
-
-# LiteLLM
-curl http://127.0.0.1:11435/health
-
 # API Server
-curl http://127.0.0.1:8775/
+curl http://127.0.0.1:8775/health
 ```
 
 ## Troubleshooting
@@ -68,7 +50,6 @@ curl http://127.0.0.1:8775/
 ### "Port 8775 already in use"
 - Check: `lsof -i :8775` (macOS/Linux) or `netstat -ano | findstr :8775` (Windows)
 - Kill the process or change API_SERVER_PORT in .env
-- API Server uses port 8775 only (no PostgreSQL or LiteLLM proxy)
 
 ### "Failed to load models"
 - Check internet connection: `curl -I https://api.groq.com`
@@ -88,8 +69,7 @@ curl http://127.0.0.1:8775/
 
 1. Close other applications (saves RAM)
 2. Disable browser extensions
-3. Run on SSD (better PostgreSQL performance)
-4. Use modern browser (better JS)
+3. Use modern browser (better JS)
 
 ## Uninstall
 
@@ -100,7 +80,6 @@ Complete removal: `rm -rf ~/.pinokio/api/virtual-model-emulator`
 ## Getting Help
 
 1. Check Pinokio console for errors
-2. Check PostgreSQL logfile: postgres/logfile
-3. Verify internet connection
-4. Check disk space (needs 2GB)
-5. Try deleting .env and reinstalling
+2. Verify internet connection
+3. Check disk space (needs 2GB)
+4. Try deleting .env and reinstalling

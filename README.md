@@ -4,7 +4,7 @@ A unified AI model emulation and routing platform that allows you to transparent
 
 ## Features
 
-- **Multi-Provider Support**: Route to 100+ AI providers (OpenAI, Anthropic, Groq, Mistral, etc.)
+- **Multi-Provider Support**: Route to 11+ AI providers (OpenAI, Anthropic, Groq, Mistral, etc.)
 - **Model Aliasing**: Request "gpt-4" but route to any provider's model
 - **Local-First Architecture**: Run entirely on your machine, no cloud dependencies
 - **Direct SDK Integration**: Uses LiteLLM SDK directly (no proxy server needed)
@@ -25,6 +25,7 @@ A unified AI model emulation and routing platform that allows you to transparent
 ### Prerequisites
 - Windows 10+ (macOS/Linux supported)
 - Python 3.9+
+- API key for at least one AI provider (Groq, OpenAI, Anthropic, etc.)
 
 ### Installation
 
@@ -38,12 +39,12 @@ A unified AI model emulation and routing platform that allows you to transparent
 
 ### First Time Setup
 
-1. **Add API Keys**: Click "Manage API Keys" tab
+1. **Add API Keys**: Click "Connect Providers" tab
    - Select provider (OpenAI, Anthropic, Groq, etc.)
    - Paste your API key
    - Click "Connect"
 
-2. **Configure Models**: Click "Configuration" tab
+2. **Configure Models**: Click "Emulator Configuration" tab
    - Select account and model
    - Enter emulated name (e.g., "gpt-4")
    - Click "Start Emulation"
@@ -101,7 +102,7 @@ The emulator will route "gpt-4" to whatever model you configured.
 - Restart the app from Pinokio
 
 ### "No API key found"
-- Ensure you've added an API key for the provider in the "Manage API Keys" tab
+- Ensure you've added an API key for the provider in the "Connect Providers" tab
 - Check that the emulation is configured in the "Configuration" tab
 
 ### "Models aren't updating"
