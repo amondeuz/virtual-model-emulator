@@ -106,6 +106,140 @@
       color: #666;
       margin-top: 8px;
     }
+
+    /* Master Key Section Styles */
+    .master-key-section {
+      background: #f0fff4;
+      border-left: 4px solid #22c55e;
+      padding: 16px;
+      margin-bottom: 20px;
+      border-radius: 4px;
+    }
+    
+    .key-display-box {
+      display: flex;
+      gap: 8px;
+      margin: 10px 0;
+      align-items: center;
+    }
+    
+    .key-display-box input {
+      flex: 1;
+      padding: 10px 12px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-family: monospace;
+      font-size: 13px;
+      background: white;
+    }
+    
+    .key-display-box button {
+      padding: 10px 16px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    
+    .key-btn-load {
+      background: #4a9eff;
+      color: white;
+    }
+    
+    .key-btn-copy {
+      background: #eef2f7;
+      color: #1f2933;
+    }
+    
+    .key-btn-toggle {
+      background: #f0f0f0;
+      color: #1f2933;
+    }
+    
+    .key-btn-load:hover {
+      background: #3a8aef;
+    }
+    
+    .key-btn-copy:hover {
+      background: #dfe6f2;
+    }
+    
+    .key-btn-toggle:hover {
+      background: #e0e0e0;
+    }
+    
+    .key-message {
+      font-size: 13px;
+      margin-top: 8px;
+      min-height: 18px;
+      padding: 6px 10px;
+      border-radius: 4px;
+      display: none;
+    }
+    
+    .key-message.success {
+      background: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+      display: block;
+    }
+    
+    .key-message.error {
+      background: #f8d7da;
+      color: #721c24;
+      border: 1px solid #f5c6cb;
+      display: block;
+    }
+    
+    .key-note {
+      font-size: 12px;
+      color: #666;
+      margin-top: 8px;
+    }
+    
+    .info-banner {
+      background: #f0f8ff;
+      border-left: 4px solid #2196F3;
+      padding: 16px;
+      margin-bottom: 20px;
+      border-radius: 4px;
+    }
+    
+    .api-url-box {
+      display: flex;
+      gap: 8px;
+      margin: 10px 0;
+    }
+    
+    .api-url-box input {
+      flex: 1;
+      padding: 8px 12px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-family: monospace;
+      background: white;
+    }
+    
+    .api-url-box button {
+      padding: 8px 16px;
+      background: #2196F3;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    
+    .api-url-box button:hover {
+      background: #0b7dda;
+    }
+    
+    .hint {
+      font-size: 12px;
+      color: #666;
+      margin-top: 8px;
+    }
   </style>
 </head>
 <body>
@@ -121,7 +255,31 @@
         </div>
         <p class="hint">Use this URL in Pinokio apps: <code>http://localhost:8775</code></p>
       </div>
+      <div class="info-banner">
+        <h3>API Base URL</h3>
+        <div class="api-url-box">
+          <input type="text" id="apiBaseUrl" value="http://localhost:8775" readonly>
+          <button onclick="navigator.clipboard.writeText(document.getElementById('apiBaseUrl').value); alert('Copied!')">Copy</button>
+        </div>
+        <p class="hint">Use this URL in Pinokio apps: <code>http://localhost:8775</code></p>
+      </div>
     </header>
+
+    <!-- Master Key Section -->
+    <div class="master-key-section">
+      <h3>🔑 API Master Key</h3>
+      <div class="key-display-box">
+        <input type="password" id="masterKeyInput" readonly placeholder="Click 'Load Key' to display">
+        <button class="key-btn-load" id="loadMasterKeyBtn">Load Key</button>
+        <button class="key-btn-copy" id="copyMasterKeyBtn">Copy</button>
+        <button class="key-btn-toggle" id="toggleMasterKeyBtn">Show</button>
+      </div>
+      <div id="keyMessage" class="key-message"></div>
+      <p class="key-note">
+        This key is used for authenticating with the LiteLLM proxy. It's automatically generated and stored in <code>config.yaml</code>.
+        <br><strong>Note:</strong> Keep this key secure. It provides full API access.
+      </p>
+    </div>
 
     <!-- Step 1: Account -->
     <div class="section">
@@ -239,16 +397,85 @@
     var emulatorActive = false;
     var providerOnline = false;
 
-    // Toggle custom emulated name input
-    emulatedModelSelect.addEventListener('change', function() {
-      if (this.value === 'custom') {
-        customEmulatedName.style.display = 'block';
-        customEmulatedName.focus();
-      } else {
-        customEmulatedName.style.display = 'none';
-      }
-    });
+    // Master Key Variables
+    var masterKeyInput = document.getElementById('masterKeyInput');
+    var loadMasterKeyBtn = document.getElementById('loadMasterKeyBtn');
+    var copyMasterKeyBtn = document.getElementById('copyMasterKeyBtn');
+    var toggleMasterKeyBtn = document.getElementById('toggleMasterKeyBtn');
+    var keyMessage = document.getElementById('keyMessage');
+    var keyVisible = false;
 
+    // Master Key Functions
+    async function loadMasterKey() {
+      loadMasterKeyBtn.disabled = true;
+      loadMasterKeyBtn.textContent = 'Loading...';
+      masterKeyInput.value = 'Loading...';
+      keyMessage.className = 'key-message';
+      keyMessage.textContent = '';
+
+      try {
+        const response = await fetch('/admin/master-key');
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+        }
+        
+        const data = await response.json();
+        if (data.masterKey) {
+          masterKeyInput.value = data.masterKey;
+          keyMessage.textContent = '✅ Master key loaded successfully';
+          keyMessage.className = 'key-message success';
+        } else {
+          throw new Error(data.error || 'No key found in response');
+        }
+      } catch (error) {
+        masterKeyInput.value = 'Failed to load key';
+        keyMessage.textContent = `Error: ${error.message}`;
+        keyMessage.className = 'key-message error';
+        console.error('Failed to load master key:', error);
+      } finally {
+        loadMasterKeyBtn.disabled = false;
+        loadMasterKeyBtn.textContent = 'Load Key';
+      }
+    }
+
+    function copyMasterKey() {
+      if (masterKeyInput.value === 'Click "Load Key" to display' || 
+          masterKeyInput.value === 'Loading...' || 
+          masterKeyInput.value === 'Failed to load key') {
+        keyMessage.textContent = 'Please load the key first';
+        keyMessage.className = 'key-message error';
+        return;
+      }
+      
+      navigator.clipboard.writeText(masterKeyInput.value)
+        .then(() => {
+          keyMessage.textContent = '✅ Key copied to clipboard!';
+          keyMessage.className = 'key-message success';
+          
+          // Auto-hide success message after 3 seconds
+          setTimeout(() => {
+            keyMessage.className = 'key-message';
+          }, 3000);
+        })
+        .catch(err => {
+          keyMessage.textContent = 'Failed to copy key';
+          keyMessage.className = 'key-message error';
+          console.error('Copy error:', err);
+        });
+    }
+
+    function toggleKeyVisibility() {
+      keyVisible = !keyVisible;
+      masterKeyInput.type = keyVisible ? 'text' : 'password';
+      toggleMasterKeyBtn.textContent = keyVisible ? 'Hide' : 'Show';
+    }
+
+    // Add Master Key Event Listeners
+    loadMasterKeyBtn.addEventListener('click', loadMasterKey);
+    copyMasterKeyBtn.addEventListener('click', copyMasterKey);
+    toggleMasterKeyBtn.addEventListener('click', toggleKeyVisibility);
+
+    // Original functions remain unchanged
     function getEmulatedModelName() {
       if (emulatedModelSelect.value === 'custom') {
         return customEmulatedName.value.trim();
@@ -592,7 +819,7 @@
       var url = '/models?force=' + (force ? 'true' : 'false') + (provider ? '&provider=' + provider : '');
 
       fetch(url)
-        .then(function(res) { return res.json(); })
+        .then(function(res) { return r.json(); })
         .then(function(data) {
           // Check for offline/error response
           if (data.error) {
@@ -847,4 +1074,3 @@
   </script>
 </body>
 </html>
-
