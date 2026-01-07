@@ -712,7 +712,7 @@
                     .catch(function(err) {
                         console.warn('[WARN] Polling check failed:', err);
                     });
-            }, 10000);
+            }, 30000);  // Poll every 30 seconds instead of 10
         }
 
         // Start the appropriate listener
