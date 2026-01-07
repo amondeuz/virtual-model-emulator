@@ -6,6 +6,7 @@ import json
 import os
 import http.server
 import socketserver
+import ssl
 import threading
 import time
 import gzip
@@ -59,38 +60,43 @@ error_logger.addHandler(error_handler)
 error_logger.setLevel(logging.ERROR)
 
 class ModelCache:
-    """Cache provider model lists with 1-hour TTL"""
+    """Cache provider model lists with 1-hour TTL (thread-safe)"""
     def __init__(self, ttl_seconds=3600):
         self.cache = {}
         self.ttl = ttl_seconds
+        self.lock = threading.Lock()
 
     def get(self, provider: str) -> Optional[List[Dict]]:
-        if provider not in self.cache:
-            return None
-        cached = self.cache[provider]
-        age = time.time() - cached['timestamp']
-        if age > self.ttl:
-            del self.cache[provider]
-            return None
-        return cached['models']
+        with self.lock:
+            if provider not in self.cache:
+                return None
+            cached = self.cache[provider]
+            age = time.time() - cached['timestamp']
+            if age > self.ttl:
+                del self.cache[provider]
+                return None
+            return cached['models']
 
     def set(self, provider: str, models: List[Dict]) -> None:
-        self.cache[provider] = {
-            'models': models,
-            'timestamp': time.time()
-        }
+        with self.lock:
+            self.cache[provider] = {
+                'models': models,
+                'timestamp': time.time()
+            }
 
     def invalidate(self, provider: Optional[str] = None) -> None:
-        if provider:
-            self.cache.pop(provider, None)
-        else:
-            self.cache.clear()
+        with self.lock:
+            if provider:
+                self.cache.pop(provider, None)
+            else:
+                self.cache.clear()
 
     def stats(self) -> Dict[str, Any]:
-        return {
-            'cached_providers': len(self.cache),
-            'entries': {p: len(v['models']) for p, v in self.cache.items()}
-        }
+        with self.lock:
+            return {
+                'cached_providers': len(self.cache),
+                'entries': {p: len(v['models']) for p, v in self.cache.items()}
+            }
 
 class CachedFallback:
     """Fall back to stale cache if provider is down"""
@@ -113,21 +119,23 @@ class CachedFallback:
         return int(age_seconds / 60)
 
 class RateLimiter:
-    """Simple rate limiter for API endpoints"""
+    """Simple rate limiter for API endpoints (thread-safe)"""
     def __init__(self, requests_per_second=10):
         self.requests_per_second = requests_per_second
         self.requests = defaultdict(list)
+        self.lock = threading.Lock()
 
     def is_allowed(self, client_ip: str) -> bool:
-        now = time.time()
-        window_start = now - 1.0
-        self.requests[client_ip] = [
-            ts for ts in self.requests[client_ip] if ts > window_start
-        ]
-        if len(self.requests[client_ip]) >= self.requests_per_second:
-            return False
-        self.requests[client_ip].append(now)
-        return True
+        with self.lock:
+            now = time.time()
+            window_start = now - 1.0
+            self.requests[client_ip] = [
+                ts for ts in self.requests[client_ip] if ts > window_start
+            ]
+            if len(self.requests[client_ip]) >= self.requests_per_second:
+                return False
+            self.requests[client_ip].append(now)
+            return True
 
 def log_audit(action: str, provider: str, account_name: str, success: bool, details: str = "") -> None:
     """Log security-relevant actions"""
@@ -235,17 +243,26 @@ class AccountEncryption:
         self.cipher = Fernet(self.master_key)
 
     def _get_or_create_master_key(self):
-        """Get master key from config.yaml, create if missing"""
+        """Get master key from environment or generate new one"""
+        env_key = os.environ.get('VME_MASTER_KEY')
+        if env_key:
+            return env_key.encode()
+
+        # Check config.yaml for backwards compatibility
         if CONFIG_FILE.exists():
             with open(CONFIG_FILE, 'r') as f:
                 config = yaml.safe_load(f) or {}
                 if 'master_key' in config:
+                    print(f'[INFO] Using master key from config.yaml (consider migrating to VME_MASTER_KEY env var)', flush=True)
                     return config['master_key'].encode()
 
-        # Generate new master key
+        # If no env key, generate and warn user to set it
         new_key = Fernet.generate_key().decode()
+        print(f'[WARNING] VME_MASTER_KEY not set - generated temporary key', flush=True)
+        print(f'[WARNING] Set env var: VME_MASTER_KEY={new_key}', flush=True)
+        print(f'[WARNING] This key will be lost on restart unless saved to .env', flush=True)
 
-        # Save to config.yaml
+        # Save to config.yaml for backwards compatibility
         config = {}
         if CONFIG_FILE.exists():
             with open(CONFIG_FILE, 'r') as f:
@@ -257,10 +274,11 @@ class AccountEncryption:
         with open(CONFIG_FILE, 'w') as f:
             yaml.dump(config, f, default_flow_style=False)
 
-        print(f'[OK] Master key generated and saved to config.yaml', flush=True)
-        print(f'[WARNING] ⚠️  KEEP config.yaml SECURE - contains encryption key!', flush=True)
-        print(f'[WARNING] ⚠️  Do NOT commit config.yaml to version control', flush=True)
-        print(f'[WARNING] ⚠️  Do NOT share config.yaml with others', flush=True)
+        try:
+            CONFIG_FILE.chmod(0o600)
+        except Exception as e:
+            print(f"[WARN] Could not set config.yaml permissions: {e}", flush=True)
+
         return new_key.encode()
 
     def encrypt(self, plaintext):
@@ -304,17 +322,27 @@ def load_accounts() -> List[Dict[str, Any]]:
 
 
 def save_accounts(accounts: List[Dict[str, Any]]) -> None:
-    """Save accounts to JSON file with encrypted API keys."""
-    # Make a copy to avoid modifying in-memory accounts
+    """Save accounts to JSON file with encrypted API keys (atomic)."""
     accounts_to_save = []
     for acc in accounts:
         acc_copy = acc.copy()
-        # Encrypt API key before saving
         if 'apiKey' in acc_copy:
             acc_copy['apiKey'] = encryption.encrypt(acc_copy['apiKey'])
         accounts_to_save.append(acc_copy)
 
-    ACCOUNTS_FILE.write_text(json.dumps(accounts_to_save, indent=2))
+    try:
+        # Write to temp file first, then rename (atomic)
+        temp_file = ACCOUNTS_FILE.with_suffix('.json.tmp')
+        temp_file.write_text(json.dumps(accounts_to_save, indent=2))
+        temp_file.replace(ACCOUNTS_FILE)
+        try:
+            ACCOUNTS_FILE.chmod(0o600)
+        except Exception as e:
+            print(f"[WARN] Could not set accounts.json permissions: {e}", flush=True)
+    except Exception as e:
+        print(f"[ERROR] Failed to save accounts: {e}", flush=True)
+        log_error(e, {"action": "save_accounts"}, "SAVE_ACCOUNTS_FAILED")
+        raise
 
 
 def load_emulations() -> List[Dict[str, Any]]:
@@ -338,9 +366,20 @@ def load_emulations() -> List[Dict[str, Any]]:
 
 
 def save_emulations() -> None:
-    """Save emulations to JSON file."""
+    """Save emulations to JSON file (atomic)."""
     global _active_emulations
-    EMULATIONS_FILE.write_text(json.dumps(_active_emulations, indent=2))
+    try:
+        temp_file = EMULATIONS_FILE.with_suffix('.json.tmp')
+        temp_file.write_text(json.dumps(_active_emulations, indent=2))
+        temp_file.replace(EMULATIONS_FILE)
+        try:
+            EMULATIONS_FILE.chmod(0o600)
+        except Exception as e:
+            print(f"[WARN] Could not set emulations.json permissions: {e}", flush=True)
+    except Exception as e:
+        print(f"[ERROR] Failed to save emulations: {e}", flush=True)
+        log_error(e, {"action": "save_emulations"}, "SAVE_EMULATIONS_FAILED")
+        raise
 
 
 def get_accounts_for_provider(provider_id: str) -> List[Dict[str, Any]]:
@@ -395,14 +434,26 @@ def _sanitize_error(error_msg: Any) -> str:
     if not error_msg:
         return "Unknown error"
 
-    sensitive_patterns = ['api_key', 'apikey', 'api-key', 'bearer', 'token', 'password', 'secret']
-    error_lower = str(error_msg).lower()
+    error_str = str(error_msg)
+    error_lower = error_str.lower()
+
+    # List of sensitive patterns to look for
+    sensitive_patterns = [
+        'api_key', 'apikey', 'api-key', 'api_token', 'apitoken',
+        'bearer', 'token', 'password', 'secret', 'authorization',
+        'auth=', 'key=', 'x-api-key', 'sk-', 'sk_', 'pk-', 'pk_'
+    ]
 
     for pattern in sensitive_patterns:
         if pattern in error_lower:
-            return "Request failed (details logged server-side)"
+            # Generic message - sensitive pattern detected
+            return "Request failed (sensitive data detected - details logged server-side)"
 
-    return str(error_msg)
+    # If no sensitive patterns, return first 200 chars
+    if len(error_str) > 200:
+        return error_str[:200] + "..."
+
+    return error_str
 
 
 # Providers sorted alphabetically by name (LiteLLM SDK format)
@@ -435,21 +486,29 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
                 self.send_response(status)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Encoding", "gzip")
-                self.send_header("Access-Control-Allow-Origin", "*")
+                self.send_header("Access-Control-Allow-Origin", "http://localhost:8775")
+                self.send_header("Content-Security-Policy", "default-src 'self'")
+                self.send_header("X-Content-Type-Options", "nosniff")
+                self.send_header("X-Frame-Options", "DENY")
                 self.end_headers()
                 self.wfile.write(compressed)
                 return
 
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
-        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Origin", "http://localhost:8775")
+        self.send_header("Content-Security-Policy", "default-src 'self'")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
         self.end_headers()
         self.wfile.write(json_bytes)
 
-    def read_json_body(self):
-        """Read and parse JSON body from request."""
+    def read_json_body(self, max_size=10_485_760):  # 10MB limit
+        """Read and parse JSON body from request (with size limit)."""
         try:
             content_length = int(self.headers.get('Content-Length', 0))
+            if content_length > max_size:
+                return None  # Caller should check for None
             if content_length:
                 raw_body = self.rfile.read(content_length)
                 return json.loads(raw_body.decode('utf-8'))
@@ -461,9 +520,12 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
 
     def do_OPTIONS(self):
         self.send_response(200)
-        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Origin", "http://localhost:8775")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        self.send_header("Content-Security-Policy", "default-src 'self'")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
         self.end_headers()
 
     def do_GET(self):
@@ -531,7 +593,12 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
             self.send_json({"online": True, "message": "API server running (LiteLLM SDK mode)"})
 
         elif path == "/emulator/active":
-            self.send_json({"active": _active_emulations, "count": len(_active_emulations)})
+            with _emulation_lock:
+                safe_emulations = [
+                    {k: v for k, v in e.items() if k != "apiKey"}
+                    for e in _active_emulations
+                ]
+            self.send_json({"active": safe_emulations, "count": len(safe_emulations)})
 
         elif path == "/providers/list":
             self.send_json({"providers": PROVIDERS})
@@ -560,11 +627,12 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
                     }, 400)
                     return
 
-                # Fetch with retry
+                # Fetch with retry and timeout
                 models_list = call_with_retry(
                     litellm.get_model_list,
                     custom_llm_provider=provider,
                     api_key=api_key,
+                    timeout=15,
                     max_attempts=3,
                     base_delay=1.0
                 )
@@ -636,9 +704,20 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
 
         if path == "/providers/connect":
             data = self.read_json_body()
+            if data is None:
+                self.send_json({"error": "Request body too large (max 10MB)"}, 413)
+                return
+
             provider = data.get("provider")
             account_name = data.get("accountName")
             api_key = data.get("apiKey")
+
+            # Validate provider is in PROVIDERS list
+            valid_providers = [p["id"] for p in PROVIDERS]
+            if provider not in valid_providers:
+                log_audit("ACCOUNT_ADD_FAILED", provider or "", "", False, "Invalid provider")
+                self.send_json({"success": False, "error": f"Unknown provider: {provider}"}, 400)
+                return
 
             if not all([provider, account_name, api_key]):
                 log_audit("ACCOUNT_ADD_FAILED", provider or "", account_name or "", False, "Missing fields")
@@ -717,7 +796,7 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
                 "emulatedName": emulated_name,
                 "actualModel": full_model,
                 "provider": provider,
-                "apiKey": api_key
+                "apiKey": encryption.encrypt(api_key)
             }
 
             with _emulation_lock:
@@ -735,7 +814,15 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
             })
 
         elif path == "/emulator/stop":
-            """Stop all active emulations."""
+            """Stop all active emulations (authenticated only)."""
+            admin_secret = os.environ.get('ADMIN_SECRET')
+            if admin_secret:
+                auth_header = self.headers.get('Authorization', '')
+                if auth_header != f'Bearer {admin_secret}':
+                    self.send_json({"error": "Unauthorized"}, 403)
+                    log_audit("EMULATOR_STOP_UNAUTHORIZED", "", "", False, f"IP={client_ip}")
+                    return
+
             with _emulation_lock:
                 count = len(_active_emulations)
                 stopped = [{"emulatedName": e["emulatedName"], "actualModel": e["actualModel"]} for e in _active_emulations]
@@ -756,12 +843,51 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
                 return
 
             data = self.read_json_body()
+            if data is None:
+                self.send_json({"error": "Request body too large (max 10MB)"}, 413)
+                return
+
             requested_model = data.get("model", "")
             messages = data.get("messages", [])
 
             if not messages:
                 self.send_json({"error": "Messages required"}, 400)
                 return
+
+            # Validate each message has required fields
+            for i, msg in enumerate(messages):
+                if not isinstance(msg, dict):
+                    self.send_json({"error": f"Message {i} must be object"}, 400)
+                    return
+                if "role" not in msg or "content" not in msg:
+                    self.send_json({"error": f"Message {i} missing role or content"}, 400)
+                    return
+                if msg.get("role") not in ["user", "assistant", "system"]:
+                    self.send_json({"error": f"Message {i} invalid role"}, 400)
+                    return
+
+            # Validate temperature
+            temperature = data.get("temperature", 0.7)
+            try:
+                temperature = float(temperature)
+                if not (0.0 <= temperature <= 2.0):
+                    raise ValueError(f"temperature must be 0.0-2.0, got {temperature}")
+            except (ValueError, TypeError) as e:
+                self.send_json({"error": f"Invalid temperature: {e}"}, 400)
+                return
+
+            # Validate max_tokens
+            max_tokens = data.get("max_tokens")
+            if max_tokens is not None:
+                try:
+                    max_tokens = int(max_tokens)
+                    if max_tokens <= 0:
+                        raise ValueError(f"max_tokens must be positive")
+                    if max_tokens > 32000:
+                        raise ValueError(f"max_tokens cannot exceed 32000")
+                except (ValueError, TypeError) as e:
+                    self.send_json({"error": f"Invalid max_tokens: {e}"}, 400)
+                    return
 
             # Find emulation for requested model
             emulation = None
@@ -773,7 +899,8 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
                     if em["emulatedName"] == requested_model:
                         emulation = em
                         actual_model = em["actualModel"]
-                        api_key = em["apiKey"]
+                        # Decrypt API key from emulation
+                        api_key = encryption.decrypt(em["apiKey"])
                         break
 
             # If no emulation found, try to use the model directly
@@ -791,13 +918,17 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
                 return
 
             try:
-                response = litellm.completion(
+                response = call_with_retry(
+                    litellm.completion,
                     model=actual_model,
                     messages=messages,
                     api_key=api_key,
-                    temperature=data.get("temperature", 0.7),
-                    max_tokens=data.get("max_tokens"),
-                    stream=False
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    stream=False,
+                    timeout=30,
+                    max_attempts=3,
+                    base_delay=1.0
                 )
 
                 result = {
@@ -892,8 +1023,19 @@ def main():
     # Start HTTP server
     try:
         with socketserver.TCPServer(("127.0.0.1", port), APIHandler) as httpd:
-            # Output URL (required for app_launcher.py ready detection)
-            print(f"http://localhost:{port}/config.html", flush=True)
+            # Optional: Enable SSL if cert available
+            ssl_cert = os.environ.get('SSL_CERT_FILE')
+            ssl_key = os.environ.get('SSL_KEY_FILE')
+            if ssl_cert and ssl_key:
+                context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+                context.load_cert_chain(ssl_cert, ssl_key)
+                httpd.socket = context.wrap_socket(httpd.socket, server_side=True)
+                print(f"[OK] HTTPS enabled", flush=True)
+                print(f"https://localhost:{port}/config.html", flush=True)
+            else:
+                print(f"[INFO] HTTPS disabled (set SSL_CERT_FILE and SSL_KEY_FILE to enable)", flush=True)
+                print(f"http://localhost:{port}/config.html", flush=True)
+
             print(f"[INFO] API server started on port {port}", flush=True)
             print(f"[INFO] Architecture: API Server → LiteLLM SDK → Provider APIs", flush=True)
             print(f"[OK] Server ready - No proxy or database needed!", flush=True)
