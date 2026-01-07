@@ -244,42 +244,22 @@ class AccountEncryption:
         self.cipher = Fernet(self.master_key)
 
     def _get_or_create_master_key(self):
-        """Get master key from environment or generate new one"""
-        env_key = os.environ.get('VME_MASTER_KEY')
-        if env_key:
-            return env_key.encode()
-
-        # Check config.yaml for backwards compatibility
+        """Get master key from config.yaml (created once, reused forever)"""
         if CONFIG_FILE.exists():
             with open(CONFIG_FILE, 'r') as f:
                 config = yaml.safe_load(f) or {}
                 if 'master_key' in config:
-                    print(f'[INFO] Using master key from config.yaml (consider migrating to VME_MASTER_KEY env var)', flush=True)
                     return config['master_key'].encode()
 
-        # If no env key, generate and warn user to set it
+        # First run - generate and save
         new_key = Fernet.generate_key().decode()
-        print(f'[WARNING] VME_MASTER_KEY not set - generated temporary key', flush=True)
-        print(f'[WARNING] Set env var: VME_MASTER_KEY={new_key}', flush=True)
-        print(f'[WARNING] This key will be lost on restart unless saved to .env', flush=True)
-
-        # Save to config.yaml for backwards compatibility
-        config = {}
-        if CONFIG_FILE.exists():
-            with open(CONFIG_FILE, 'r') as f:
-                config = yaml.safe_load(f) or {}
-
+        config = yaml.safe_load(CONFIG_FILE.read_text()) if CONFIG_FILE.exists() else {}
         config['master_key'] = new_key
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-
         with open(CONFIG_FILE, 'w') as f:
             yaml.dump(config, f, default_flow_style=False)
 
-        try:
-            CONFIG_FILE.chmod(0o600)
-        except Exception as e:
-            print(f"[WARN] Could not set config.yaml permissions: {e}", flush=True)
-
+        print(f'[OK] Master key created and saved to config.yaml', flush=True)
         return new_key.encode()
 
     def encrypt(self, plaintext):
@@ -683,6 +663,20 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
                 "cache": model_cache.stats(),
                 "ttl_seconds": model_cache.ttl
             })
+
+        elif path == "/admin/master-key":
+            try:
+                with open(CONFIG_FILE, 'r') as f:
+                    config = yaml.safe_load(f) or {}
+                    master_key = config.get('master_key', os.environ.get('VME_MASTER_KEY', ''))
+
+                if master_key:
+                    self.send_json({"masterKey": master_key})
+                else:
+                    self.send_json({"error": "Master key not found"}, 500)
+            except Exception as e:
+                log_error(e, {"action": "get_master_key"}, "GET_MASTER_KEY_FAILED")
+                self.send_json({"error": "Failed to retrieve master key"}, 500)
 
         elif path == "/" or path == "":
             self.path = "/config.html"
