@@ -65,6 +65,47 @@
     .emulated-section { background: #f0f7ff; border: 1px solid #bfdbfe; border-radius: 10px; padding: 16px; margin-top: 18px; }
     .emulated-section label { color: #1e40af; }
     .emulated-hint { font-size: 12px; color: #3b82f6; margin-top: 6px; }
+    .info-banner {
+      background: #f0f8ff;
+      border-left: 4px solid #2196F3;
+      padding: 16px;
+      margin-bottom: 20px;
+      border-radius: 4px;
+    }
+    
+    .api-url-box {
+      display: flex;
+      gap: 8px;
+      margin: 10px 0;
+    }
+    
+    .api-url-box input {
+      flex: 1;
+      padding: 8px 12px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-family: monospace;
+      background: white;
+    }
+    
+    .api-url-box button {
+      padding: 8px 16px;
+      background: #2196F3;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    
+    .api-url-box button:hover {
+      background: #0b7dda;
+    }
+    
+    .hint {
+      font-size: 12px;
+      color: #666;
+      margin-top: 8px;
+    }
   </style>
 </head>
 <body>
@@ -72,6 +113,14 @@
     <header>
       <h1>Virtual Model Emulator</h1>
       <p class="muted">Model name emulator powered by LiteLLM. Route any model name to any provider.</p>
+      <div class="info-banner">
+        <h3>API Base URL</h3>
+        <div class="api-url-box">
+          <input type="text" id="apiBaseUrl" value="http://localhost:8775" readonly>
+          <button onclick="navigator.clipboard.writeText(document.getElementById('apiBaseUrl').value); alert('Copied!')">Copy</button>
+        </div>
+        <p class="hint">Use this URL in Pinokio apps: <code>http://localhost:8775</code></p>
+      </div>
     </header>
 
     <!-- Step 1: Account -->
@@ -798,3 +847,4 @@
   </script>
 </body>
 </html>
+
