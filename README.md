@@ -1,4 +1,4 @@
-# Virtual Model Emulator v2.2.1
+# Virtual Model Emulator v2.2.2
 
 A unified AI model emulation and routing platform that allows you to transparently route API calls to different LLM providers while presenting them as if they're a single model.
 
@@ -8,11 +8,15 @@ A unified AI model emulation and routing platform that allows you to transparent
 - **Model Aliasing**: Request "gpt-4" but route to any provider's model
 - **Local-First Architecture**: Run entirely on your machine, no cloud dependencies
 - **Direct SDK Integration**: Uses LiteLLM SDK directly (no proxy server needed)
-- **Encrypted API Keys**: Master key encryption for secure credential storage
+- **Encrypted API Keys**: Master key encryption with environment variable support (`VME_MASTER_KEY`)
+- **Secure Storage**: API keys encrypted in both accounts and emulations, file permissions enforced (0600)
 - **Audit Logging**: Security-relevant actions logged to `config/audit.log`
-- **Rate Limiting**: 10 req/s per IP to prevent abuse
-- **Smart Caching**: 1-hour TTL cache for provider models with stale fallback
-- **Web-Based UI**: User-friendly interface for managing configurations
+- **Rate Limiting**: Thread-safe 10 req/s per IP to prevent abuse
+- **Smart Caching**: Thread-safe 1-hour TTL cache with stale fallback and timeouts
+- **Input Validation**: Temperature, max_tokens, and message structure validation
+- **Retry Logic**: Exponential backoff for transient failures on all LiteLLM calls
+- **Optional HTTPS**: SSL/TLS support via environment variables
+- **Web-Based UI**: User-friendly interface with client-side validation
 - **Cross-Tab Synchronization**: Real-time updates across browser tabs in Pinokio
 - **Fast Startup**: Single service architecture, 5-second initialization
 
@@ -106,6 +110,7 @@ The emulator will route "gpt-4" to whatever model you configured.
 
 ## Version History
 
+- **v2.2.2** (2026-01-07): Security hardening - 28 fixes including encrypted emulations, environment-based master key, HTTPS support, thread-safe caching, input validation, retry logic
 - **v2.2.1** (2026-01-06): Production hardening - rate limiting, caching, audit logging, key rotation
 - **v2.2.0** (2025-01-06): Major simplification - removed proxy/database, uses SDK directly
 - **v2.1.4** (2025-01-04): Complete architectural refactor, UI fixes, cross-tab sync
@@ -114,9 +119,15 @@ The emulator will route "gpt-4" to whatever model you configured.
 
 ## Security
 
-- API keys stored locally in JSON file
+- **Encrypted Storage**: API keys encrypted with Fernet (AES-128-CBC)
+- **Environment-Based Keys**: Master key via `VME_MASTER_KEY` environment variable
+- **File Permissions**: Sensitive files protected with 0600 permissions
+- **Input Validation**: All API inputs validated (temperature, max_tokens, messages)
+- **Error Sanitization**: Secrets removed from error messages
+- **Optional HTTPS**: TLS support via `SSL_CERT_FILE` and `SSL_KEY_FILE`
+- **Localhost CORS**: Cross-origin requests restricted to localhost
+- **Admin Authentication**: Management endpoints protected via `ADMIN_SECRET`
 - No data sent to external servers except to your selected provider
-- Keep your `config/` directory secure
 
 ## Migration from v2.1.x
 

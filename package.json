@@ -1,6 +1,6 @@
 {
   "name": "virtual-model-emulator",
-  "version": "2.2.1",
+  "version": "2.2.2",
   "description": "OpenAI-compatible endpoint powered by LiteLLM SDK. Supports 100+ AI providers with model name emulation.",
   "main": "app_launcher.py",
   "scripts": {
