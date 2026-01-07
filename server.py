@@ -1,5 +1,6 @@
 """
-Backend server for Virtual Model Emulator.
+Virtual Model Emulator v2.2.2 - Backend Server
+OpenAI-compatible endpoint powered by LiteLLM SDK.
 Uses LiteLLM SDK directly (no proxy needed).
 """
 import json

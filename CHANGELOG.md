@@ -1,5 +1,46 @@
 # Changelog
 
+## [2.2.2] - 2026-01-07
+
+### Security (Critical - 5 fixes)
+- **Encrypted Emulations**: API keys now encrypted in `emulations.json` using Fernet
+- **Environment-Based Master Key**: Master key now loaded from `VME_MASTER_KEY` environment variable (with config.yaml fallback)
+- **Protected /emulator/active**: Removed API keys from response, added thread-safe locking
+- **Authenticated /emulator/stop**: Requires `ADMIN_SECRET` bearer token when set
+- **File Permissions**: Sensitive files (accounts.json, emulations.json, config.yaml) set to 0600
+
+### Major Functionality (8 fixes)
+- **Atomic File Writes**: save_accounts() and save_emulations() now use temp file + rename pattern
+- **Retry Logic for Completions**: litellm.completion() now uses call_with_retry() with exponential backoff
+- **Provider Validation**: /providers/connect validates provider against PROVIDERS list
+- **Temperature Validation**: Validated to be float in range 0.0-2.0
+- **max_tokens Validation**: Validated to be positive integer <= 32000
+- **Message Structure Validation**: Each message must have role (user/assistant/system) and content
+- **Thread-Safe Emulation Reads**: All _active_emulations access now protected by lock
+
+### Reliability (5 fixes)
+- **Thread-Safe RateLimiter**: Added threading.Lock() for concurrent request handling
+- **Thread-Safe ModelCache**: All cache operations now protected by lock
+- **API Timeouts**: 15s for model fetch, 30s for chat completions
+- **Request Body Limit**: 10MB max to prevent memory exhaustion
+- **Improved Error Sanitization**: More patterns (sk-, pk_, auth=, etc.) detected and removed
+
+### Infrastructure (3 fixes)
+- **Optional HTTPS/SSL**: Set `SSL_CERT_FILE` and `SSL_KEY_FILE` environment variables to enable
+- **Restricted CORS**: Now only allows `http://localhost:8775` origin
+- **Security Headers**: Added Content-Security-Policy, X-Frame-Options, X-Content-Type-Options
+
+### Minor Improvements (4 fixes)
+- **Client-Side API Key Validation**: Format validation in connect.html before save
+- **Reduced Polling**: Changed from 10s to 30s in config.html for better efficiency
+
+### Environment Variables
+New environment variables for secure deployment:
+- `VME_MASTER_KEY`: Encryption key for API keys (required for production)
+- `ADMIN_SECRET`: Bearer token for /emulator/stop authentication (optional)
+- `SSL_CERT_FILE`: Path to SSL certificate file (optional)
+- `SSL_KEY_FILE`: Path to SSL private key file (optional)
+
 ## [2.2.1] - 2026-01-06
 
 ### Added
