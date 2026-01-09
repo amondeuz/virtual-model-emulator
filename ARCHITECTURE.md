@@ -2,7 +2,7 @@
 
 ## Service Architecture
 
-Virtual Model Emulator v2.2.2 uses a simplified single-service architecture.
+Virtual Model Emulator v2.2.3 uses a simplified single-service architecture.
 
 ### Master Process: app_launcher.py
 - Starts API Server as subprocess
@@ -65,10 +65,44 @@ Fallback: If BroadcastChannel unavailable, polling every 30 seconds detects chan
 
 - **accounts.json**: Saved accounts with encrypted API keys
 - **emulations.json**: Active model emulations with encrypted API keys
-- **config.yaml**: Master encryption key (legacy support)
+- **config.yaml**: Master encryption key and optional CORS origins
 - **Environment**: VME_MASTER_KEY for encrypted storage
 
 All sensitive files set to 0600 permissions.
+
+## CORS Handler
+
+The `CORSHandler` class provides production-ready cross-origin request handling:
+
+### Default Allowed Origins
+```python
+DEFAULT_ALLOWED_ORIGINS = {
+    "http://localhost:8775",      # Emulator's own UI
+    "http://127.0.0.1:8775",      # IP format
+    "http://localhost:3000",       # Open WebUI/Next.js
+    "http://localhost:8080",       # Common dev server
+    "http://localhost:42004",      # Open WebUI alternate
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:8080",
+}
+```
+
+### Localhost Wildcard
+When `LOCALHOST_WILDCARD = True` (default), any `http://localhost:*` or `http://127.0.0.1:*` origin is allowed. This enables zero-config development with any frontend on any port.
+
+### Config Extension
+Additional origins can be added via `config.yaml`:
+```yaml
+general_settings:
+  allowed_origins:
+    - "https://myapp.example.com"
+    - "https://staging.example.com"
+```
+
+These extend (not replace) the default origins.
+
+### Production Deployment
+For production, set `LOCALHOST_WILDCARD = False` in `server.py` and configure only your production domains in `config.yaml`.
 
 ## Performance
 

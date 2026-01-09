@@ -1,7 +1,8 @@
 """
-Virtual Model Emulator v2.2.2 - Backend Server
+Virtual Model Emulator v2.2.3 - Backend Server
 OpenAI-compatible endpoint powered by LiteLLM SDK.
 Uses LiteLLM SDK directly (no proxy needed).
+Features production-ready CORS with localhost wildcard support.
 """
 import json
 import os
