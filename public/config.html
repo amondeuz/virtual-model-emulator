@@ -669,6 +669,12 @@
     }
 
     function refreshModels(force) {
+      var provider = providerSelect.value;
+      if (!provider) {
+        console.log('[DEBUG] refreshModels called without provider selected, skipping');
+        return;  // Silently exit if no provider selected
+      }
+      
       refreshModelsBtn.disabled = true;
       var originalText = refreshModelsBtn.textContent;
       refreshModelsBtn.textContent = 'Loading...';
@@ -933,6 +939,7 @@
   </script>
 </body>
 </html>
+
 
 
 
