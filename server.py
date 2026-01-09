@@ -180,57 +180,9 @@ def call_with_retry(func, *args, max_attempts: int = 3, base_delay: float = 1.0,
             time.sleep(delay)
     raise last_error
 
-class MasterKeyRotation:
-    """Handle master key rotation without losing data"""
-    def __init__(self, config_file, accounts_file):
-        self.config_file = config_file
-        self.accounts_file = accounts_file
-
-    def rotate_key(self) -> bool:
-        """Rotate to new master key, re-encrypt all accounts"""
-        try:
-            with open(self.config_file, 'r') as f:
-                config = yaml.safe_load(f) or {}
-
-            old_key = config.get('master_key')
-            if not old_key:
-                raise ValueError("No previous master key found")
-
-            old_cipher = Fernet(old_key.encode())
-            accounts = json.loads(self.accounts_file.read_text())
-
-            for acc in accounts:
-                if 'apiKey' in acc:
-                    try:
-                        decrypted = old_cipher.decrypt(acc['apiKey'].encode()).decode()
-                        acc['apiKey'] = decrypted
-                    except Exception:
-                        print(f"[WARN] Failed to decrypt key for {acc['accountName']}", flush=True)
-
-            new_key = Fernet.generate_key().decode()
-            new_cipher = Fernet(new_key.encode())
-
-            for acc in accounts:
-                if 'apiKey' in acc:
-                    acc['apiKey'] = new_cipher.encrypt(acc['apiKey'].encode()).decode()
-
-            config['master_key'] = new_key
-            config['key_rotated_at'] = time.time()
-
-            with open(self.config_file, 'w') as f:
-                yaml.dump(config, f)
-
-            self.accounts_file.write_text(json.dumps(accounts, indent=2))
-            print(f"[OK] Master key rotated successfully", flush=True)
-            return True
-        except Exception as e:
-            print(f"[ERROR] Key rotation failed: {e}", flush=True)
-            return False
-
 model_cache = ModelCache(ttl_seconds=3600)
 stale_fallback = CachedFallback()
 rate_limiter = RateLimiter(requests_per_second=10)
-key_rotation = MasterKeyRotation(CONFIG_FILE, ACCOUNTS_FILE)
 
 # Thread-safe lock for emulation operations
 _emulation_lock = threading.Lock()
@@ -240,27 +192,106 @@ class AccountEncryption:
     """Handle encryption/decryption of API keys using master key from config.yaml"""
 
     def __init__(self):
+        # First, ensure config directory exists
+        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        
+        # Get or create master key
         self.master_key = self._get_or_create_master_key()
         self.cipher = Fernet(self.master_key)
+        print(f'[OK] Encryption initialized with key', flush=True)
 
     def _get_or_create_master_key(self):
-        """Get master key from config.yaml (created once, reused forever)"""
-        if CONFIG_FILE.exists():
-            with open(CONFIG_FILE, 'r') as f:
-                config = yaml.safe_load(f) or {}
-                if 'master_key' in config:
-                    return config['master_key'].encode()
-
-        # First run - generate and save
-        new_key = Fernet.generate_key().decode()
-        config = yaml.safe_load(CONFIG_FILE.read_text()) if CONFIG_FILE.exists() else {}
-        config['master_key'] = new_key
-        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-        with open(CONFIG_FILE, 'w') as f:
-            yaml.dump(config, f, default_flow_style=False)
-
-        print(f'[OK] Master key created and saved to config.yaml', flush=True)
-        return new_key.encode()
+        """Get master key from config.yaml - create one-time permanent key on first install"""
+        try:
+            # 1. Try to load existing config
+            config = {}
+            if CONFIG_FILE.exists():
+                print(f'[DEBUG] config.yaml exists, attempting to load', flush=True)
+                try:
+                    with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+                        config = yaml.safe_load(f) or {}
+                        print(f'[DEBUG] Loaded config, keys: {list(config.keys())}', flush=True)
+                except Exception as e:
+                    print(f'[ERROR] Failed to load config.yaml: {e}', flush=True)
+                    config = {}
+            
+            # 2. Check if we have a master_key in the proper location
+            # First check old location (root) for backward compatibility
+            master_key = None
+            if 'master_key' in config:
+                # Old format - migrate to new format
+                print(f'[INFO] Found master_key at root, migrating to general_settings', flush=True)
+                master_key = config['master_key']
+                # Move it to general_settings
+                if 'general_settings' not in config:
+                    config['general_settings'] = {}
+                config['general_settings']['master_key'] = master_key
+                del config['master_key']
+            elif config.get('general_settings', {}).get('master_key'):
+                # New format - already in general_settings
+                master_key = config['general_settings']['master_key']
+                print(f'[DEBUG] Found master_key in general_settings', flush=True)
+            
+            # 3. If no key exists, generate new one and create full config structure
+            if not master_key:
+                print(f'[INFO] No master_key found, generating new permanent key', flush=True)
+                new_key = Fernet.generate_key().decode()
+                
+                # Build complete config structure
+                config = {
+                    'model_list': [],
+                    'general_settings': {
+                        'master_key': new_key,
+                        'database_url': 'postgresql://postgres:postgres@localhost:5450/litellm'
+                    },
+                    'litellm_settings': {
+                        'drop_params': True,
+                        'check_provider_endpoint': True,
+                        'cost_tracking': False
+                    }
+                }
+                master_key = new_key
+                print(f'[DEBUG] Created new config structure with master_key', flush=True)
+            else:
+                # Key exists, ensure full structure is present
+                if 'model_list' not in config:
+                    config['model_list'] = []
+                if 'general_settings' not in config:
+                    config['general_settings'] = {}
+                if 'database_url' not in config['general_settings']:
+                    config['general_settings']['database_url'] = 'postgresql://postgres:postgres@localhost:5450/litellm'
+                if 'litellm_settings' not in config:
+                    config['litellm_settings'] = {
+                        'drop_params': True,
+                        'check_provider_endpoint': True,
+                        'cost_tracking': False
+                    }
+            
+            # 4. Save the config to file (always save to ensure structure is correct)
+            try:
+                with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+                    yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+                print(f'[OK] Master key ready in config.yaml', flush=True)
+                
+                # Verify file was written
+                if CONFIG_FILE.exists():
+                    with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                        if master_key in content:
+                            print(f'[DEBUG] Master key confirmed in config.yaml', flush=True)
+            except Exception as e:
+                print(f'[CRITICAL] Failed to write config.yaml: {e}', flush=True)
+                import traceback
+                traceback.print_exc()
+                raise
+            
+            return master_key.encode()
+            
+        except Exception as e:
+            print(f'[FATAL] Failed to initialize master key: {e}', flush=True)
+            # Fallback: generate an ephemeral key for this session only
+            print(f'[WARN] Using ephemeral key for this session', flush=True)
+            return Fernet.generate_key()
 
     def encrypt(self, plaintext):
         """Encrypt API key"""
@@ -666,10 +697,11 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
 
         elif path == "/admin/master-key":
             try:
-                with open(CONFIG_FILE, 'r') as f:
+                with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
                     config = yaml.safe_load(f) or {}
-                    master_key = config.get('master_key', os.environ.get('VME_MASTER_KEY', ''))
-
+                    # Check both old and new locations
+                    master_key = config.get('general_settings', {}).get('master_key', config.get('master_key', ''))
+                
                 if master_key:
                     self.send_json({"masterKey": master_key})
                 else:
@@ -969,19 +1001,6 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
                     }
                 }, 500)
 
-        elif path == "/admin/rotate-key":
-            secret = self.read_json_body().get("secret")
-            if secret != os.environ.get('ADMIN_SECRET'):
-                self.send_json({"error": "Invalid admin secret"}, 403)
-                return
-
-            if key_rotation.rotate_key():
-                log_audit("KEY_ROTATION", "", "", True)
-                self.send_json({"success": True, "message": "Master key rotated"})
-            else:
-                log_audit("KEY_ROTATION", "", "", False)
-                self.send_json({"success": False, "error": "Rotation failed"}, 500)
-
         else:
             self.send_json({"error": "Not found"}, 404)
 
@@ -1050,3 +1069,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
