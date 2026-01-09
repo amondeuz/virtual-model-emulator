@@ -686,6 +686,24 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
                     log_error(e, {"provider": provider, "endpoint": path}, "MODEL_FETCH_FAILED")
                     self.send_json({"error": _sanitize_error(str(e)), "offline": True, "models": []}, 400)
 
+        elif path == "/v1/models":
+            """OpenAI-compatible models endpoint for Open WebUI"""
+            with _emulation_lock:
+                # Format emulations into OpenAI's model list structure
+                model_list = []
+                for emulation in _active_emulations:
+                    model_list.append({
+                        "id": emulation["emulatedName"],  # The name Open WebUI will see
+                        "object": "model",
+                        "created": int(time.time()),  # Current timestamp
+                        "owned_by": "virtual-model-emulator"
+                    })
+            
+            self.send_json({
+                "object": "list",
+                "data": model_list
+            })
+                
         elif path == "/admin/cache-stats":
             self.send_json({
                 "cache": model_cache.stats(),
@@ -1066,5 +1084,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
