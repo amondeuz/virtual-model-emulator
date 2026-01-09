@@ -188,6 +188,95 @@ rate_limiter = RateLimiter(requests_per_second=10)
 _emulation_lock = threading.Lock()
 
 
+class CORSHandler:
+    """Production-ready CORS handler with secure defaults and optional config override"""
+
+    # Default origins that should always work for local development
+    DEFAULT_ALLOWED_ORIGINS = {
+        "http://localhost:8775",      # Your emulator's own UI
+        "http://127.0.0.1:8775",      # Same as above, IP format
+        "http://localhost:3000",       # Common Open WebUI/Next.js port
+        "http://localhost:8080",       # Common dev server port
+        "http://localhost:42004",      # Your current Open WebUI port
+        "http://127.0.0.1:3000",       # IP format for Open WebUI
+        "http://127.0.0.1:8080",       # IP format for other dev servers
+    }
+
+    # Allow any localhost port for development convenience
+    # (Comment this out for production deployment)
+    LOCALHOST_WILDCARD = True
+
+    def __init__(self):
+        self.allowed_origins = self._load_configured_origins()
+        self.allowed_methods = {"GET", "POST", "OPTIONS"}
+        self.allowed_headers = {"Content-Type", "Authorization", "X-Requested-With"}
+        print(f"[INFO] CORS enabled for {len(self.allowed_origins)} allowed origins", flush=True)
+
+    def _load_configured_origins(self):
+        """Load origins - config file can extend defaults but not replace them"""
+        origins = set(self.DEFAULT_ALLOWED_ORIGINS)
+
+        # Optional: Allow config.yaml to ADD origins (but defaults always included)
+        try:
+            if CONFIG_FILE.exists():
+                with open(CONFIG_FILE, 'r') as f:
+                    config = yaml.safe_load(f) or {}
+                    extra_origins = config.get('general_settings', {}).get('allowed_origins', [])
+                    origins.update(extra_origins)
+                    if extra_origins:
+                        print(f"[INFO] Added {len(extra_origins)} CORS origins from config", flush=True)
+        except Exception as e:
+            print(f"[WARN] Could not load CORS config: {e}", flush=True)
+
+        return origins
+
+    def is_origin_allowed(self, origin):
+        """Validate origin against allowlist with smart localhost handling"""
+        if not origin:
+            return False
+
+        # 1. Exact match in allowed origins
+        if origin in self.allowed_origins:
+            return True
+
+        # 2. Development convenience: allow any localhost port
+        if self.LOCALHOST_WILDCARD:
+            if origin.startswith(('http://localhost:', 'http://127.0.0.1:')):
+                print(f"[DEBUG] Allowing localhost origin: {origin}", flush=True)
+                return True
+
+        # 3. Optional: Domain pattern matching for production
+        # if any(origin.startswith(pattern) for pattern in self.domain_patterns):
+        #     return True
+
+        print(f"[SECURITY] CORS blocked origin: {origin}", flush=True)
+        return False
+
+    def add_cors_headers(self, handler, origin):
+        """Add CORS headers to response"""
+        if self.is_origin_allowed(origin):
+            handler.send_header("Access-Control-Allow-Origin", origin)
+            handler.send_header("Access-Control-Allow-Credentials", "true")
+            return True
+        return False
+
+    def handle_preflight(self, handler):
+        """Handle CORS preflight OPTIONS request"""
+        origin = handler.headers.get('Origin', '')
+
+        if not self.is_origin_allowed(origin):
+            handler.send_error(403, "Origin not allowed")
+            return False
+
+        handler.send_response(200)
+        self.add_cors_headers(handler, origin)
+        handler.send_header("Access-Control-Allow-Methods", ", ".join(self.allowed_methods))
+        handler.send_header("Access-Control-Allow-Headers", ", ".join(self.allowed_headers))
+        handler.send_header("Access-Control-Max-Age", "86400")  # 24 hours
+        handler.end_headers()
+        return True
+
+
 class AccountEncryption:
     """Handle encryption/decryption of API keys using master key from config.yaml"""
 
@@ -305,6 +394,9 @@ class AccountEncryption:
 
 # Initialize encryption at module level
 encryption = AccountEncryption()
+
+# CORS handler with secure defaults
+cors_handler = CORSHandler()
 
 # In-memory emulation state (persisted to JSON)
 _active_emulations = []
@@ -487,6 +579,7 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
     def send_json(self, data, status=200):
         json_str = json.dumps(data)
         json_bytes = json_str.encode()
+        origin = self.headers.get('Origin', '')
 
         # Compress if > 1KB
         if len(json_bytes) > 1024:
@@ -495,7 +588,7 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
                 self.send_response(status)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Encoding", "gzip")
-                self.send_header("Access-Control-Allow-Origin", "http://localhost:8775")
+                cors_handler.add_cors_headers(self, origin)
                 self.send_header("Content-Security-Policy", "default-src 'self'")
                 self.send_header("X-Content-Type-Options", "nosniff")
                 self.send_header("X-Frame-Options", "DENY")
@@ -505,7 +598,7 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
 
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
-        self.send_header("Access-Control-Allow-Origin", "http://localhost:8775")
+        cors_handler.add_cors_headers(self, origin)
         self.send_header("Content-Security-Policy", "default-src 'self'")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "DENY")
@@ -528,14 +621,9 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
         return {}
 
     def do_OPTIONS(self):
-        self.send_response(200)
-        self.send_header("Access-Control-Allow-Origin", "http://localhost:8775")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
-        self.send_header("Content-Security-Policy", "default-src 'self'")
-        self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("X-Frame-Options", "DENY")
-        self.end_headers()
+        """Handle CORS preflight requests"""
+        if not cors_handler.handle_preflight(self):
+            return  # Error already sent
 
     def do_GET(self):
         import urllib.parse
