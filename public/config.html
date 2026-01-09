@@ -678,7 +678,7 @@
       var url = '/models?force=' + (force ? 'true' : 'false') + (provider ? '&provider=' + provider : '');
 
       fetch(url)
-        .then(function(res) { return r.json(); })
+        .then(function(res) { return res.json(); })
         .then(function(data) {
           // Check for offline/error response
           if (data.error) {
@@ -933,5 +933,6 @@
   </script>
 </body>
 </html>
+
 
 
