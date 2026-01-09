@@ -242,7 +242,6 @@ class AccountEncryption:
                     'model_list': [],
                     'general_settings': {
                         'master_key': new_key,
-                        'database_url': 'postgresql://postgres:postgres@localhost:5450/litellm'
                     },
                     'litellm_settings': {
                         'drop_params': True,
@@ -258,8 +257,6 @@ class AccountEncryption:
                     config['model_list'] = []
                 if 'general_settings' not in config:
                     config['general_settings'] = {}
-                if 'database_url' not in config['general_settings']:
-                    config['general_settings']['database_url'] = 'postgresql://postgres:postgres@localhost:5450/litellm'
                 if 'litellm_settings' not in config:
                     config['litellm_settings'] = {
                         'drop_params': True,
@@ -1069,4 +1066,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
