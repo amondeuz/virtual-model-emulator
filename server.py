@@ -702,6 +702,14 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
             self.send_json({"providers": PROVIDERS})
 
         elif path == "/models":
+            """For external apps - returns active emulations only"""
+            with _emulation_lock:
+                models = [{"id": e["emulatedName"], "label": e["emulatedName"]}
+                         for e in _active_emulations]
+            self.send_json({"models": models})
+
+        elif path == "/provider-models":
+            """For emulator UI only - gets models from specific providers"""
             import requests
 
             provider = query.get("provider", [""])[0]

@@ -681,7 +681,7 @@
       setMessage('Loading models...');
 
       var provider = providerSelect.value || '';
-      var url = '/models?force=' + (force ? 'true' : 'false') + (provider ? '&provider=' + provider : '');
+      var url = '/provider-models?force=' + (force ? 'true' : 'false') + (provider ? '&provider=' + provider : '');
 
       fetch(url)
         .then(function(res) { return res.json(); })
