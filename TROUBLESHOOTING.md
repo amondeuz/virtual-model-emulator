@@ -72,6 +72,29 @@ ssh -L 8775:localhost:8775 user@remote-ip
 curl http://localhost:8775/config/state
 ```
 
+## "CORS error in browser console"
+
+**v2.2.3+**: Should not happen for localhost origins. The emulator automatically allows any `localhost:*` or `127.0.0.1:*` port.
+
+**Check server logs** for blocked origins:
+```bash
+grep "CORS blocked" config/audit.log
+# Or check console output for: [SECURITY] CORS blocked origin: ...
+```
+
+**For non-localhost origins** (production):
+Add to `config/config.yaml`:
+```yaml
+general_settings:
+  allowed_origins:
+    - "https://your-domain.com"
+```
+
+**Still blocked?** Check that:
+1. Your frontend is using `http://` not `https://` for localhost
+2. The port number matches what you see in your browser URL
+3. The Origin header is being sent (check browser DevTools → Network → Request Headers)
+
 ## Debug Checklist
 
 1. `curl http://localhost:8775/health` - Server running?

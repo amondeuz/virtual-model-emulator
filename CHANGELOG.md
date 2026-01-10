@@ -1,5 +1,26 @@
 # Changelog
 
+## [2.2.3] - 2026-01-09
+
+### CORS (Zero-Config Development Support)
+- **Production-Ready CORSHandler**: New class with secure defaults and configurable options
+- **Localhost Wildcard**: Automatically allows any `localhost:*` or `127.0.0.1:*` port for development
+- **Default Allowed Origins**: Pre-configured for common development ports (3000, 8080, 8775, 42004)
+- **Config Extensibility**: `config.yaml` can add production domains without replacing defaults
+- **Security Logging**: Blocked CORS origins logged with `[SECURITY]` prefix for monitoring
+- **Preflight Caching**: OPTIONS responses cached for 24 hours (Access-Control-Max-Age)
+
+### Changed
+- `send_json()` now uses dynamic origin from request headers instead of hardcoded value
+- `do_OPTIONS()` delegated to `CORSHandler.handle_preflight()` for centralized handling
+- CORS headers now include `Access-Control-Allow-Credentials: true` for cookie support
+
+### Benefits
+- Works immediately with Open WebUI on any port
+- Zero manual configuration required for local development
+- Production-ready: set `LOCALHOST_WILDCARD = False` and configure allowed domains
+- Security audit trail for blocked cross-origin requests
+
 ## [2.2.2] - 2026-01-07
 
 ### Security (Critical - 5 fixes)

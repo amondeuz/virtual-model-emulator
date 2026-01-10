@@ -178,6 +178,36 @@ OpenAI-compatible chat endpoint.
 - **Limit**: 10 requests/second per IP
 - **Response on limit**: 429 Too Many Requests
 
+## CORS (Cross-Origin Resource Sharing)
+
+The API supports CORS for browser-based clients like Open WebUI.
+
+### Default Behavior
+- **Localhost Wildcard**: Any `http://localhost:*` or `http://127.0.0.1:*` origin is automatically allowed
+- **Pre-configured Ports**: 3000, 8080, 8775, 42004 explicitly allowed
+- **Credentials**: `Access-Control-Allow-Credentials: true` for cookie support
+- **Preflight Cache**: OPTIONS responses cached 24 hours
+
+### Allowed Methods
+`GET`, `POST`, `OPTIONS`
+
+### Allowed Headers
+`Content-Type`, `Authorization`, `X-Requested-With`
+
+### Adding Production Origins
+Add to `config.yaml`:
+```yaml
+general_settings:
+  allowed_origins:
+    - "https://your-domain.com"
+```
+
+### Security Logging
+Blocked CORS origins are logged:
+```
+[SECURITY] CORS blocked origin: https://untrusted-site.com
+```
+
 ## Configuration
 
 ### Environment Variables

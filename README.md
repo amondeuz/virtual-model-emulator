@@ -1,4 +1,4 @@
-# Virtual Model Emulator v2.2.2
+# Virtual Model Emulator v2.2.3
 
 A unified AI model emulation and routing platform that allows you to transparently route API calls to different LLM providers while presenting them as if they're a single model.
 
@@ -8,6 +8,8 @@ A unified AI model emulation and routing platform that allows you to transparent
 - **Model Aliasing**: Request "gpt-4" but route to any provider's model
 - **Local-First Architecture**: Run entirely on your machine, no cloud dependencies
 - **Direct SDK Integration**: Uses LiteLLM SDK directly (no proxy server needed)
+- **Zero-Config CORS**: Works with Open WebUI and other frontends out of the box
+- **Localhost Wildcard**: Automatically allows any localhost port for development
 - **Encrypted API Keys**: Master key encryption with environment variable support (`VME_MASTER_KEY`)
 - **Secure Storage**: API keys encrypted in both accounts and emulations, file permissions enforced (0600)
 - **Audit Logging**: Security-relevant actions logged to `config/audit.log`
@@ -111,6 +113,7 @@ The emulator will route "gpt-4" to whatever model you configured.
 
 ## Version History
 
+- **v2.2.3** (2026-01-09): Zero-config CORS - production-ready handler with localhost wildcard, works with Open WebUI out of the box
 - **v2.2.2** (2026-01-07): Security hardening - 28 fixes including encrypted emulations, environment-based master key, HTTPS support, thread-safe caching, input validation, retry logic
 - **v2.2.1** (2026-01-06): Production hardening - rate limiting, caching, audit logging, key rotation
 - **v2.2.0** (2025-01-06): Major simplification - removed proxy/database, uses SDK directly
@@ -126,7 +129,8 @@ The emulator will route "gpt-4" to whatever model you configured.
 - **Input Validation**: All API inputs validated (temperature, max_tokens, messages)
 - **Error Sanitization**: Secrets removed from error messages
 - **Optional HTTPS**: TLS support via `SSL_CERT_FILE` and `SSL_KEY_FILE`
-- **Localhost CORS**: Cross-origin requests restricted to localhost
+- **Smart CORS**: Localhost wildcard for development, configurable for production
+- **CORS Security Logging**: Blocked origins logged for security monitoring
 - **Admin Authentication**: Management endpoints protected via `ADMIN_SECRET`
 - No data sent to external servers except to your selected provider
 

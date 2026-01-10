@@ -1,4 +1,4 @@
-# Installation & Setup Notes (v2.2.2)
+# Installation & Setup Notes (v2.2.3)
 
 ## What Gets Installed
 
@@ -9,12 +9,10 @@
 - pytest>=7.0.0 (Unit testing - optional for development)
 
 ### Configuration Files
-- .env (database and service config)
-- config.yaml (LiteLLM routing)
+- config.yaml (master key, CORS origins)
+- accounts.json (encrypted provider credentials)
+- emulations.json (active model mappings)
 - public/ (web UI files)
-
-### Data Directory
-- postgres/ (binaries and data)
 
 ## Platform-Specific Notes
 
